@@ -13,13 +13,8 @@ module Annotato
         type = col.sql_type
         options = []
 
-        if !col.default.nil?
-          if col.default.to_s.length > 60 && json_like?(col.default)
-            formatted_default = format_json_default(col.default)
-            options << "default(\n#{formatted_default}\n#  )"
-          else
-            options << "default(#{col.default.inspect})"
-          end
+        if formatted = format_default(col.default)
+          options << formatted
         end
 
         options << "not null" unless col.null
@@ -42,15 +37,16 @@ module Annotato
     end
 
     def self.json_like?(value)
-      value.is_a?(String) && value.strip.start_with?("{") && value.strip.end_with?("}")
+      value.is_a?(String) && value.strip.start_with?('{', '[') && value.strip.end_with?('}', ']')
     end
 
-    def self.format_json_default(json_str)
-      begin
-        parsed = JSON.parse(json_str)
-        parsed.map { |k, v| "#    \"#{k}\": #{v}" }.join(",\n")
-      rescue JSON::ParserError
-        "#    #{json_str.strip}"
+    def self.format_default(value)
+      return nil if value.nil?
+
+      if json_like?(value)
+        "default(#{value.strip.gsub(/\s+/, ' ')})"
+      else
+        "default(#{value.inspect})"
       end
     end
   end
