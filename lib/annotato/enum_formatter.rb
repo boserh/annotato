@@ -6,14 +6,20 @@ module Annotato
       return [] if model.defined_enums.empty?
 
       model.defined_enums.map do |attr, values|
-        # Check if all values equal keys (strings)
-        if values.values.all? { |v| v == v.to_s && values.keys.include?(v) }
-          enum_str = values.keys.join(", ")
-        else
-          enum_str = values.map { |k, v| "#{k} (#{v})" }.join(", ")
+        lines = ["#  #{attr}: {"]
+
+        formatted_values = values.map do |key, val|
+          if key.to_s == val.to_s
+            "#{key}"
+          else
+            "#{key} (#{val})"
+          end
         end
 
-        "#  #{attr}: { #{enum_str} }"
+        lines += formatted_values.map { |v| "#    #{v}," }
+        lines[-1] = lines[-1].chomp(',') # remove trailing comma from last line
+        lines << "#  }"
+        lines.join("\n")
       end
     end
   end

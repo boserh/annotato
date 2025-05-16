@@ -50,7 +50,12 @@ RSpec.describe Annotato::AnnotationBuilder do
       expect(annotation).to include("Indexes:")
       expect(annotation).to include("Triggers:")
       expect(annotation).to include("Enums:")
-      expect(annotation).to include("status: { draft (0), published (1) }")
+      expect(annotation).to include(<<~ENUM.strip)
+        #  status: {
+        #    draft (0),
+        #    published (1)
+        #  }
+      ENUM
     end
 
     it "does not include indexes or triggers if none exist" do

@@ -28,7 +28,12 @@ RSpec.describe Annotato::EnumFormatter do
 
     it "formats enums without values" do
       result = described_class.format(model)
-      expect(result).to include("#  delivery_type: { truck_delivery, ship_delivery }")
+      expect(result).to include(<<~ENUM.strip)
+        #  delivery_type: {
+        #    truck_delivery,
+        #    ship_delivery
+        #  }
+      ENUM
     end
   end
 
@@ -47,7 +52,13 @@ RSpec.describe Annotato::EnumFormatter do
 
     it "formats enums with values" do
       result = described_class.format(model)
-      expect(result).to include("#  status: { draft (0), published (1), archived (2) }")
+      expect(result).to include(<<~ENUM.strip)
+        #  status: {
+        #    draft (0),
+        #    published (1),
+        #    archived (2)
+        #  }
+      ENUM
     end
   end
 end
