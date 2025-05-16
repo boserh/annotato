@@ -13,7 +13,15 @@ module Annotato
         type = col.sql_type
         options = []
 
-        options << "default(#{col.default.inspect})" unless col.default.nil?
+        if !col.default.nil?
+          if col.default.to_s.length > 60 && json_like?(col.default)
+            formatted_default = format_json_default(col.default)
+            options << "default(\n#{formatted_default}\n#  )"
+          else
+            options << "default(#{col.default.inspect})"
+          end
+        end
+
         options << "not null" unless col.null
         options << "primary key" if name == primary_key
         options << "is an Array" if type.end_with?("[]")
@@ -30,6 +38,19 @@ module Annotato
         line = "#  %-#{name_width}s :%-#{type_width}s" % [name, type]
         line += " #{opts}" unless opts.empty?
         line.rstrip
+      end
+    end
+
+    def self.json_like?(value)
+      value.is_a?(String) && value.strip.start_with?("{") && value.strip.end_with?("}")
+    end
+
+    def self.format_json_default(json_str)
+      begin
+        parsed = JSON.parse(json_str)
+        parsed.map { |k, v| "#    \"#{k}\": #{v}" }.join(",\n")
+      rescue JSON::ParserError
+        "#    #{json_str.strip}"
       end
     end
   end
