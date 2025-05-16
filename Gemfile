@@ -12,4 +12,5 @@ gem "rspec", "~> 3.0"
 
 group :development, :test do
   gem "simplecov", require: false
+  gem "pry", require: false
 end
