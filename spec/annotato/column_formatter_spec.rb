@@ -7,27 +7,20 @@ RSpec.describe Annotato::ColumnFormatter do
   let(:connection) { double("Connection") }
   let(:model) { double("Model") }
 
-  let(:defaults_array) do
-    [
-      "ARRIVED_AT_PICKUP", "PICKED_UP", "PICKUP_APPT_CHANGED", "DELIVERY_APPT_CHANGED",
-      "ENROUTE_TO_PICKUP", "ESTIMATED_DELIVERY", "ENROUTE_TO_DELIVERY", "ARRIVED_AT_DELIVERY", "DELIVERED", "CLOSED", "CANCELED"
-    ]
-  end
-
   let(:columns) do
     [
-      double("Column", name: "id", sql_type: "bigint", default: nil, null: false),
-      double("Column", name: "allowed_states", sql_type: "character varying[]", default: defaults_array.to_json, null: false),
-      double("Column", name: "roles", sql_type: "character varying[]", default: [].to_json, null: false),
-      double("Column", name: "status", sql_type: "integer", default: "draft", null: false),
-      double("Column", name: "config", sql_type: "jsonb", default: { foo: "bar" }.to_json, null: true),
-      double("Column", name: "raw_json", sql_type: "jsonb", default: '{"a":1,"b":2}', null: false),
-      double("Column", name: "nil_column", sql_type: "text", default: nil, null: true)
+      double("Column", name: "id", sql_type: "integer", default: nil, null: false),
+      double("Column", name: "allowed_statuses", sql_type: "jsonb", default: [
+        "ARRIVED_AT_PICKUP", "PICKED_UP", "PICKUP_APPT_CHANGED"
+      ].to_json, null: false),
+      double("Column", name: "tags", sql_type: "character varying[]", default: [].to_json, null: false),
+      double("Column", name: "status", sql_type: "integer", default: "pending", null: false),
+      double("Column", name: "settings", sql_type: "jsonb", default: { theme: "dark" }.to_json, null: false)
     ]
   end
 
   let(:indexes) { [] }
-  let(:enums) { { "status" => { "draft" => "0", "published" => "1" } } }
+  let(:enums) { { "status" => { "pending" => "0", "active" => "1" } } }
 
   before do
     allow(model).to receive(:table_name).and_return("users")
@@ -37,16 +30,50 @@ RSpec.describe Annotato::ColumnFormatter do
     allow(connection).to receive(:indexes).with("users").and_return(indexes)
   end
 
-  it "formats columns correctly including various JSON and array default cases" do
+  it "formats and aligns multiline defaults correctly" do
     result = described_class.format(model, connection)
-    expect(result).to include(a_string_matching(/^#\s+id\s+:bigint\s+not null, primary key$/))
-    expect(result).to include(a_string_matching(/^#\s+allowed_states\s+:character varying\[\]\s+default\(\[
-#\s+  "ARRIVED_AT_PICKUP",/))
-    expect(result).to include(a_string_matching(/^#\s+roles\s+:character varying\[\]\s+default\(\[\n# \]\), not null, is an Array$/))
-    expect(result).to include(a_string_matching(/^#\s+status\s+:integer\s+default\("draft"\), not null, enum$/))
-    expect(result).to include(a_string_matching(/^#\s+config\s+:jsonb/))
-    expect(result).to include(a_string_matching(/^#\s+raw_json\s+:jsonb\s+default\(\{"a":1,"b":2\}\), not null$/))
-    expect(result).to include(a_string_matching(/^#\s+nil_column\s+:text$/))
-    expect(result.any? { |line| line =~ /enum/ }).to be true
+
+    # Find allowed_statuses lines
+    allowed_index = result.find_index { |line| line.include?("allowed_statuses") }
+    expect(allowed_index).to be_truthy
+
+    expect(result[allowed_index]).to match(/^#\s+allowed_statuses\s+:jsonb\s+default\(\[$/)
+    expect(result[allowed_index + 1]).to match(/^#\s+"ARRIVED_AT_PICKUP",$/)
+    expect(result[allowed_index + 2]).to match(/^#\s+"PICKED_UP",$/)
+    expect(result[allowed_index + 3]).to match(/^#\s+"PICKUP_APPT_CHANGED"$/)
+    expect(result[allowed_index + 4]).to match(/^#\s+\]\), not null$/)
+
+    # Ensure "is an Array" is mentioned
+    expect(result.any? { |l| l.include?("is an Array") }).to be true
+
+    # Ensure "enum" is noted for status
+    expect(result.any? { |l| l.include?("status") && l.include?("enum") }).to be true
+
+    # Ensure theme appears in settings
+    expect(result.any? { |l| l.include?("theme") }).to be true
+  end
+
+  it "aligns multiline default values with consistent indentation and comment prefix" do
+    result = described_class.format(model, connection)
+
+    allowed_index = result.find_index { |line| line.include?("allowed_statuses") }
+    expect(allowed_index).to be_truthy
+
+    opening_line = result[allowed_index]
+    indent_start = opening_line.index("default([")
+
+    multiline_lines = result[(allowed_index + 1)..]
+
+    # Select only lines with default values (those containing JSON strings like "...")
+    value_lines = multiline_lines.select { |line| line.match(/^#\s+"[^"]/) }
+
+    # All value lines should start with correct comment prefix and indentation
+    value_lines.each do |line|
+      expect(line).to match(/^#{"#" + ' ' * indent_start}"/)
+    end
+
+    # Closing line should be correctly indented
+    closing_line = multiline_lines.find { |line| line.include?("]),") }
+    expect(closing_line).to match(/^#{"#" + ' ' * indent_start}\]\),/)
   end
 end

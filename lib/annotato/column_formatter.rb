@@ -1,65 +1,76 @@
 # frozen_string_literal: true
 
-require "json"
+require 'json'
 
 module Annotato
   class ColumnFormatter
     def self.format(model, connection)
       table_name = model.table_name
       primary_key = model.primary_key
-      unique_indexes = connection.indexes(table_name).select(&:unique)
       enums = model.defined_enums
+      unique_indexes = connection.indexes(table_name).select(&:unique)
+      columns = connection.columns(table_name)
 
-      columns_raw = connection.columns(table_name).map do |col|
+      raw_data = columns.map do |col|
         name = col.name
         type = col.sql_type
-        options = []
+        default = col.default
+        opts = []
 
-        default = format_default(col.default)
-        options << default if default
-        options << "not null" unless col.null
-        options << "primary key" if name == primary_key
-        options << "is an Array" if type.end_with?("[]")
-        options << "unique" if unique_indexes.any? { |idx| idx.columns == [name] }
-        options << "enum" if enums.key?(name)
+        opts << "default(#{default.inspect})" unless default.nil?
+        opts << "not null" unless col.null
+        opts << "primary key" if name == primary_key
+        opts << "is an Array" if type.end_with?("[]")
+        opts << "unique" if unique_indexes.any? { |idx| idx.columns == [name] }
+        opts << "enum" if enums.key?(name)
 
-        [name, type, options.join(", ")]
+        [name, type, default, opts]
       end
 
-      name_width = columns_raw.map { |name, _, _| name.length }.max
-      type_width = columns_raw.map { |_, type, _| type.length }.max
+      name_width = raw_data.map { |name, *_| name.length }.max
+      type_width = raw_data.map { |_, type, *_| type.length }.max
 
-      columns_raw.map do |name, type, opts|
-        line = "#  %-#{name_width}s :%-#{type_width}s" % [name, type]
-        line += " #{opts}" unless opts.empty?
-        line.rstrip
-      end
-    end
+      raw_data.flat_map do |name, type, default, opts|
+        base_line = "#  %-#{name_width}s :%-#{type_width}s" % [name, type]
+        indent = ' ' * (base_line.length + 1)
 
-    def self.format_default(value)
-      return nil if value.nil?
+        if multiline_default?(default)
+          formatted_defaults = format_multiline_default(default)
+          remaining_opts = opts.reject { |o| o.start_with?("default(") }
 
-      if json_like?(value)
-        stripped = value.strip
-        begin
-          parsed = JSON.parse(stripped)
-          if parsed.is_a?(Array) && parsed.all? { |e| e.is_a?(String) }
-            lines = parsed.map { |e| %Q(  "#{e}",) }
-            lines[-1] = lines[-1].chomp(',') if lines.last # <-- тут зміна
-            ["default([", *lines, "])"].join("\n# ")
-          else
-            "default(#{stripped.gsub(/\s+/, ' ')})"
+          lines = []
+          lines << "#{base_line} default(["
+          formatted_defaults.each do |v|
+            lines << "#{'#' + indent}#{v}"
           end
-        rescue JSON::ParserError
-          "default(#{stripped.gsub(/\s+/, ' ')})"
+          closing = "#{'#' + indent}]),"
+          closing += " #{remaining_opts.join(', ')}" unless remaining_opts.empty?
+          lines << closing.rstrip
+          lines
+        else
+          line = base_line
+          line += " #{opts.join(', ')}" unless opts.empty?
+          line.rstrip
         end
-      else
-        "default(#{value.inspect})"
       end
     end
 
-    def self.json_like?(value)
-      value.is_a?(String) && value.strip.match?(/\A[\[{].*[\]}]\z/m)
+    def self.multiline_default?(value)
+      value.is_a?(String) && value.strip.start_with?("[") && value.strip.end_with?("]") && value.include?(",")
+    end
+
+    def self.format_multiline_default(value)
+      parsed = JSON.parse(value)
+      return [value] unless parsed.is_a?(Array)
+
+      items = parsed.is_a?(Array) && parsed[0].is_a?(Array) ? parsed[0] : parsed
+
+      items.map.with_index do |item, idx|
+        comma = idx == items.size - 1 ? "" : ","
+        "#{item.to_json}#{comma}"
+      end
+    rescue JSON::ParserError
+      [value]
     end
   end
 end
