@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    annotato (0.1.4)
+    annotato (0.1.5)
       rails (>= 6.0)
 
 GEM

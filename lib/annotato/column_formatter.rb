@@ -45,7 +45,7 @@ module Annotato
           parsed = JSON.parse(stripped)
           if parsed.is_a?(Array) && parsed.all? { |e| e.is_a?(String) }
             lines = parsed.map { |e| %Q(  "#{e}",) }
-            lines[-1] = lines[-1].chomp(',') # remove trailing comma
+            lines[-1] = lines[-1].chomp(',') if lines.last # <-- тут зміна
             ["default([", *lines, "])"].join("\n# ")
           else
             "default(#{stripped.gsub(/\s+/, ' ')})"
