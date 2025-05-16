@@ -74,6 +74,6 @@ RSpec.describe Annotato::ColumnFormatter do
 
     # Closing line should be correctly indented
     closing_line = multiline_lines.find { |line| line.include?("]),") }
-    expect(closing_line).to match(/^#{"#" + ' ' * indent_start}\]\),/)
+    expect(closing_line).to match(/^#{"#" + ' ' * (indent_start-1)}\]\),/)
   end
 end

@@ -43,7 +43,8 @@ module Annotato
           formatted_defaults.each do |v|
             lines << "#{'#' + indent}#{v}"
           end
-          closing = "#{'#' + indent}]),"
+
+          closing = "#{'#' + ' ' * (indent.length - 1)}]),"
           closing += " #{remaining_opts.join(', ')}" unless remaining_opts.empty?
           lines << closing.rstrip
           lines
