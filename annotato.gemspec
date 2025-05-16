@@ -8,16 +8,17 @@ Gem::Specification.new do |spec|
   spec.authors       = ["Serhii Bodnaruk"]
   spec.email         = ["sergiwez@gmail.com"]
 
-  spec.summary       = "Adds schema info comments to your Rails models — columns, indexes, and triggers."
+
+  spec.summary       = "Rails model annotator"
   spec.description   = "Annotato automatically adds or updates comments at the end of your Rails models to show schema details like columns, indexes, and PostgreSQL triggers."
-  spec.homepage      = "https://github.com/serhii-bodnaruk/annotato"
+  spec.homepage      = "https://github.com/boserh/annotato"
   spec.license       = "MIT"
   spec.required_ruby_version = ">= 3.1.0"
 
   spec.metadata["allowed_push_host"] = "https://rubygems.org"
   spec.metadata["homepage_uri"]      = spec.homepage
-  spec.metadata["source_code_uri"]   = "https://github.com/serhiibodnaruk/annotato"
-  spec.metadata["changelog_uri"]     = "https://github.com/serhiibodnaruk/annotato/blob/main/CHANGELOG.md"
+  spec.metadata["source_code_uri"]   = "https://github.com/boserh/annotato"
+  spec.metadata["changelog_uri"]     = "https://github.com/boserh/annotato/blob/main/CHANGELOG.md"
 
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
     `git ls-files -z`.split("\x0").reject do |f|
