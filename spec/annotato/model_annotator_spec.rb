@@ -24,7 +24,14 @@ end
 RSpec.describe Annotato::ModelAnnotator do
   let(:output) { StringIO.new }
   let(:annotator) { described_class.new(output: output) }
-  let(:model) { double("Model", name: "User", table_exists?: true, abstract_class?: false) }
+  let(:model) do
+    # base class should be the same as the model itself
+    # in a real application, this would be ActiveRecord::Base or a subclass
+    # here we just mock it for the sake of the test
+    instance = double("Model", name: "User", table_exists?: true, abstract_class?: false)
+    allow(instance).to receive(:base_class).and_return(instance)
+    instance
+  end
   let(:annotation) { "# == Annotato Schema Info\n# Table: users\n# Columns:\n#  id :bigint not null, primary key\n" }
 
   before do

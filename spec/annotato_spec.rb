@@ -31,6 +31,7 @@ class User
   def self.name; "User"; end
   def self.abstract_class?; false; end
   def self.primary_key; "id"; end
+  def self.base_class; self; end
 end
 
 RSpec.describe Annotato::ModelAnnotator do

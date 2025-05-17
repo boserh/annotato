@@ -12,6 +12,7 @@ module Annotato
 
     def run(one_model = nil)
       mtd = one_model ? [one_model] : models
+
       mtd.each do |model|
         next unless model.table_exists?
 
@@ -25,7 +26,10 @@ module Annotato
 
       def models
         Rails.application.eager_load!
-        ActiveRecord::Base.descendants.reject(&:abstract_class?)
+        # All AR models, but skip STI subclasses (only keep base classes)
+        ActiveRecord::Base.descendants
+          .reject(&:abstract_class?)
+          .select { |m| m.base_class == m }
       end
 
       def model_file(model)
