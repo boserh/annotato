@@ -9,15 +9,15 @@
 
 ## Features
 
-- Annotates Rails models with:
-  - Columns and types
-  - Default values and constraints
-  - Enums with values
-  - Indexes (only if present)
-  - Triggers (only if present)
-- Skips unchanged annotations
-- Replaces legacy `annotate`/`annotate_models` blocks
-- Smart formatting with aligned columns
+* Annotates Rails models with:
+
+  * Columns and types
+  * Default values and constraints
+  * Enums with values
+  * Indexes (only if present)
+  * Triggers (only if present)
+* Skips unchanged annotations
+* Smart formatting with aligned columns
 
 Example:
 
@@ -57,10 +57,24 @@ bundle install
 
 ## Usage
 
-To annotate all models:
+### Annotate All Models
+
+To annotate all models, run:
 
 ```bash
 bundle exec rake annotato:models
+```
+
+### Annotate Specific Models
+
+You can now pass one or multiple model names to the task.
+
+```bash
+# Annotate only the User model
+rake annotato:models[User]
+
+# Annotate multiple models (User and Admin::Account)
+rake annotato:models["User,Admin::Account"]
 ```
 
 ---
@@ -68,12 +82,13 @@ bundle exec rake annotato:models
 ## Rake Task
 
 ```bash
-rake annotato:models
+rake annotato:models[MODEL]
 ```
 
-- Automatically loads all models via `Rails.application.eager_load!`
-- Modifies model files in place
-- Existing Annotato and Annotate blocks will be replaced
+* Automatically loads all models via `Rails.application.eager_load!`
+* Modifies model files in place
+* Replace existing Annotato and legacy annotate blocks
+* **Pass `MODEL` argument (single or comma-separated) to target specific models**
 
 ---
 

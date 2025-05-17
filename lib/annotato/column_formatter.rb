@@ -1,77 +1,97 @@
 # frozen_string_literal: true
 
-require 'json'
+require "json"
 
 module Annotato
   class ColumnFormatter
+    # Main entry: returns an array of comment lines per column, flattened.
     def self.format(model, connection)
-      table_name = model.table_name
-      primary_key = model.primary_key
-      enums = model.defined_enums
+      table_name     = model.table_name
+      primary_key    = model.primary_key
       unique_indexes = connection.indexes(table_name).select(&:unique)
-      columns = connection.columns(table_name)
+      enums          = model.defined_enums
+      columns        = connection.columns(table_name)
 
-      raw_data = columns.map do |col|
+      # Compute max widths for name and sql_type so that the table lines up.
+      name_width = columns.map(&:name).map(&:length).max
+      type_width = columns.map(&:sql_type).map(&:length).max
+
+      columns.flat_map do |col|
         name = col.name
         type = col.sql_type
-        default = col.default
-        opts = []
 
-        opts << "default(#{default.inspect})" unless default.nil?
-        opts << "not null" unless col.null
-        opts << "primary key" if name == primary_key
-        opts << "is an Array" if type.end_with?("[]")
-        opts << "unique" if unique_indexes.any? { |idx| idx.columns == [name] }
-        opts << "enum" if enums.key?(name)
+        # require "pry" if name == "allowed_statuses"
+        # binding.pry if name == "allowed_statuses"
+        # Build the left-hand side and calculate indent.
+        left  = "#  %-#{name_width}s :%-#{type_width}s" % [name, type]
+        # " default(" is 9 chars; +2 gives the extra gap.
+        indent_size = left.length + 1
+        indent_str  = " " * indent_size
+        closing_indent_str  = " " * (indent_size - 2)
 
-        [name, type, default, opts]
-      end
+        # Gather all options, pulling out default_lines if multiline.
+        opts         = []
+        default_block = build_default_block(col.default)
+        if default_block
+          opts << "__MULTILINE__"  # placeholder
+        elsif col.default
+          opts << "default(#{col.default.inspect})"
+        end
+        opts << "not null"       unless col.null
+        opts << "primary key"    if name == primary_key
+        opts << "is an Array"    if type.end_with?("[]")
+        opts << "unique"         if unique_indexes.any? { |idx| idx.columns == [name] }
+        opts << "enum"           if enums.key?(name)
 
-      name_width = raw_data.map { |name, *_| name.length }.max
-      type_width = raw_data.map { |_, type, *_| type.length }.max
-
-      raw_data.flat_map do |name, type, default, opts|
-        base_line = "#  %-#{name_width}s :%-#{type_width}s" % [name, type]
-        indent = ' ' * (base_line.length + 1)
-
-        if multiline_default?(default)
-          formatted_defaults = format_multiline_default(default)
-          remaining_opts = opts.reject { |o| o.start_with?("default(") }
-
-          lines = []
-          lines << "#{base_line} default(["
-          formatted_defaults.each do |v|
-            lines << "#{'#' + indent}#{v}"
-          end
-
-          closing = "#{'#' + ' ' * (indent.length - 1)}]),"
-          closing += " #{remaining_opts.join(', ')}" unless remaining_opts.empty?
-          lines << closing.rstrip
+        # Emit either a multiline block or a single line.
+        if default_block
+          # 1) opening line
+          lines = ["#{left} default(#{col.default[0]}"]
+          # 2) each interior line, prefixed by "# " + indent_str
+          lines += default_block.map { |l| "# #{indent_str}#{l}" }
+          # 3) closing line with trailing options
+          closing = "# #{closing_indent_str}#{col.default[-1]})"
+          trailing = opts.reject { |o| o == "__MULTILINE__" }
+          closing += ", #{trailing.join(', ')}" unless trailing.empty?
+          lines << closing
           lines
         else
-          line = base_line
+          # single-line comment
+          line = left
           line += " #{opts.join(', ')}" unless opts.empty?
-          line.rstrip
+          [line.rstrip]
         end
       end
     end
 
-    def self.multiline_default?(value)
-      value.is_a?(String) && value.strip.start_with?("[") && value.strip.end_with?("]") && value.include?(",")
-    end
+    # Returns nil (no default) or an Array of un-indented lines:
+    #   ["[", "\"A\",", "\"B\"", "]"]   or   ["{", "\"k\":v,", ... , "}"]
+    # If the value is empty array or hash, returns ["[]"] or ["{}"].
+    def self.build_default_block(value)
+      return nil if value.nil?
+      s = value.strip
+      return nil unless s.start_with?("[") || s.start_with?("{")
 
-    def self.format_multiline_default(value)
-      parsed = JSON.parse(value)
-      return [value] unless parsed.is_a?(Array)
+      parsed = JSON.parse(s) rescue nil
+      return nil unless parsed.is_a?(Array) || parsed.is_a?(Hash)
 
-      items = parsed.is_a?(Array) && parsed[0].is_a?(Array) ? parsed[0] : parsed
+      if parsed.is_a?(Array)
+        return if parsed.empty? # empty array → ["[]"]
 
-      items.map.with_index do |item, idx|
-        comma = idx == items.size - 1 ? "" : ","
-        "#{item.to_json}#{comma}"
+        # Only a JSON array of strings?
+        parsed.map.with_index do |e, i|
+          comma = i == parsed.size - 1 ? "" : ","
+          %Q{"#{e}"#{comma}}
+        end
+      else
+        return if parsed.empty? # empty hash → ["{}"]
+
+        # JSON hash → key/value pairs
+        parsed.map.with_index do |(k, v), i|
+          comma = i == parsed.size - 1 ? "" : ","
+          %Q{"#{k}": #{v.inspect}#{comma}}
+        end
       end
-    rescue JSON::ParserError
-      [value]
     end
   end
 end

@@ -10,8 +10,9 @@ module Annotato
       @output = output
     end
 
-    def run
-      models.each do |model|
+    def run(one_model = nil)
+      mtd = one_model ? [one_model] : models
+      mtd.each do |model|
         next unless model.table_exists?
 
         annotation = AnnotationBuilder.build(model)

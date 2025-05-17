@@ -13,14 +13,25 @@ RSpec.describe Annotato::ColumnFormatter do
       double("Column", name: "allowed_statuses", sql_type: "jsonb", default: [
         "ARRIVED_AT_PICKUP", "PICKED_UP", "PICKUP_APPT_CHANGED"
       ].to_json, null: false),
+      double("Column", name: "contacts", sql_type: "jsonb", default: {
+        email: false,
+        phone: false,
+        emergency_email: false
+      }.to_json, null: false),
       double("Column", name: "tags", sql_type: "character varying[]", default: [].to_json, null: false),
+      double("Column", name: "spans", sql_type: "jsonb", default: {}.to_json, null: false),
       double("Column", name: "status", sql_type: "integer", default: "pending", null: false),
       double("Column", name: "settings", sql_type: "jsonb", default: { theme: "dark" }.to_json, null: false)
     ]
   end
 
   let(:indexes) { [] }
-  let(:enums) { { "status" => { "pending" => "0", "active" => "1" } } }
+  let(:enums) do
+    {
+      "status" => { "pending" => "0", "active" => "1" },
+      "allowed" => { "yes" => "yes", "no" => "no" },
+    }
+  end
 
   before do
     allow(model).to receive(:table_name).and_return("users")
@@ -69,7 +80,7 @@ RSpec.describe Annotato::ColumnFormatter do
 
     # All value lines should start with correct comment prefix and indentation
     value_lines.each do |line|
-      expect(line).to match(/^#{"#" + ' ' * indent_start}"/)
+      expect(line).to match(/^#{"#" + ' ' * (indent_start + 1)}"/)
     end
 
     # Closing line should be correctly indented
