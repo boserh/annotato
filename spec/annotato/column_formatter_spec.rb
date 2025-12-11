@@ -21,7 +21,9 @@ RSpec.describe Annotato::ColumnFormatter do
       double("Column", name: "tags", sql_type: "character varying[]", default: [].to_json, null: false),
       double("Column", name: "spans", sql_type: "jsonb", default: {}.to_json, null: false),
       double("Column", name: "status", sql_type: "integer", default: "pending", null: false),
-      double("Column", name: "settings", sql_type: "jsonb", default: { theme: "dark" }.to_json, null: false)
+      double("Column", name: "settings", sql_type: "jsonb", default: { theme: "dark" }.to_json, null: false),
+      double("Column", name: "active", sql_type: "boolean", default: false, null: false),
+      double("Column", name: "apples", sql_type: "float", default: 1.5, null: false)
     ]
   end
 
@@ -62,6 +64,10 @@ RSpec.describe Annotato::ColumnFormatter do
 
     # Ensure theme appears in settings
     expect(result.any? { |l| l.include?("theme") }).to be true
+
+    # Ensure default false is noted for active
+    expect(result.any? { |l| l.include?("active") && l.include?("default(false)") }).to be true
+    expect(result.any? { |l| l.include?("apples") && l.include?("default(1.5)") }).to be true
   end
 
   it "aligns multiline default values with consistent indentation and comment prefix" do
