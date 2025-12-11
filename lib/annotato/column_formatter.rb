@@ -34,7 +34,7 @@ module Annotato
         default_block = build_default_block(col.default)
         if default_block
           opts << "__MULTILINE__"  # placeholder
-        elsif col.default
+        elsif !col.default.nil?
           opts << "default(#{col.default.inspect})"
         end
         opts << "not null"       unless col.null
@@ -68,7 +68,7 @@ module Annotato
     #   ["[", "\"A\",", "\"B\"", "]"]   or   ["{", "\"k\":v,", ... , "}"]
     # If the value is empty array or hash, returns ["[]"] or ["{}"].
     def self.build_default_block(value)
-      return nil if value.nil?
+      return nil if value.nil? || !value.is_a?(String)
       s = value.strip
       return nil unless s.start_with?("[") || s.start_with?("{")
 
