@@ -6,7 +6,7 @@ module Annotato
       conn.indexes(table_name).map do |idx|
         cols_list = Array(idx.columns).join(',')
         unique_clause = idx.unique ? " unique" : ""
-        where_clause = idx.where ? " where (#{idx.where})" : ""
+        where_clause = idx.where ? "\n#    where (#{idx.where})" : ""
         "#  #{idx.name} (#{cols_list})#{unique_clause}#{where_clause}"
       end
     end
