@@ -25,8 +25,8 @@ RSpec.describe Annotato::AnnotationBuilder do
   describe ".build" do
     it "builds full annotation with all sections" do
       allow(connection).to receive(:columns).with(table_name).and_return([
-        double(name: "id", sql_type: "bigint", default: nil, null: false),
-        double(name: "status", sql_type: "integer", default: "draft", null: false)
+        double(name: "id", sql_type: "bigint", default: nil, null: false, where: nil),
+        double(name: "status", sql_type: "integer", default: "draft", null: false, where: nil)
       ])
 
       allow(model).to receive(:defined_enums).and_return({
@@ -36,7 +36,7 @@ RSpec.describe Annotato::AnnotationBuilder do
       allow(model).to receive(:primary_key).and_return("id")
 
       allow(connection).to receive(:indexes).with(table_name).and_return([
-        double(name: "index_users_on_email", columns: ["email"], unique: true)
+        double(name: "index_users_on_email", columns: ["email"], unique: true, where: nil)
       ])
 
       allow(connection).to receive(:exec_query).and_return([
