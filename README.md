@@ -16,6 +16,7 @@
   * Enums with values
   * Indexes (only if present)
   * Triggers (only if present)
+  * Check Constraints (only if present)
 * Skips unchanged annotations
 * Smart formatting with aligned columns
 

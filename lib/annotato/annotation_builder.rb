@@ -1,10 +1,12 @@
 # frozen_string_literal: true
 
+require_relative "wrap_helper"
 require_relative "column_formatter"
 require_relative "index_formatter"
 require_relative "trigger_formatter"
 require_relative "line_formatter"
 require_relative "enum_formatter"
+require_relative "check_constraint_formatter"
 
 module Annotato
   class AnnotationBuilder
@@ -39,6 +41,13 @@ module Annotato
         lines << ""
         lines << "Triggers:"
         lines += triggers
+      end
+
+      check_constraints = CheckConstraintFormatter.format(conn, table_name)
+      unless check_constraints.empty?
+        lines << ""
+        lines << "Check Constraints:"
+        lines += check_constraints
       end
 
       LineFormatter.format(lines)

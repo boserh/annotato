@@ -43,6 +43,10 @@ RSpec.describe Annotato::AnnotationBuilder do
         { "tgname" => "audit_trigger_row" }
       ])
 
+      allow(connection).to receive(:check_constraints).with(table_name).and_return([
+        double(table_name: table_name, name: "chk_positive_age", expression: "age > 0")
+      ])
+
       annotation = described_class.build(model)
 
       expect(annotation).to include("== Annotato Schema Info")
@@ -50,6 +54,7 @@ RSpec.describe Annotato::AnnotationBuilder do
       expect(annotation).to include("Indexes:")
       expect(annotation).to include("Triggers:")
       expect(annotation).to include("Enums:")
+      expect(annotation).to include("Check Constraints:")
       expect(annotation).to include(<<~ENUM.strip)
         #  status: {
         #    draft (0),
@@ -58,12 +63,13 @@ RSpec.describe Annotato::AnnotationBuilder do
       ENUM
     end
 
-    it "does not include indexes or triggers if none exist" do
+    it "does not include indexes or triggers or check constraints if none exist" do
       allow(connection).to receive(:columns).with(table_name).and_return([])
       allow(model).to receive(:defined_enums).and_return({})
       allow(connection).to receive(:indexes).with(table_name).and_return([])
       allow(connection).to receive(:exec_query).and_return([])
       allow(model).to receive(:primary_key).and_return("id")
+      allow(connection).to receive(:check_constraints).with(table_name).and_return([])
 
       annotation = described_class.build(model)
 
@@ -71,6 +77,7 @@ RSpec.describe Annotato::AnnotationBuilder do
       expect(annotation).not_to include("Indexes:")
       expect(annotation).not_to include("Triggers:")
       expect(annotation).not_to include("Enums:")
+      expect(annotation).not_to include("Check Constraints:")
     end
   end
 end
