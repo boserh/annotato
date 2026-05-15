@@ -42,6 +42,7 @@ module Annotato
         opts << "is an Array"    if type.end_with?("[]")
         opts << "unique"         if unique_indexes.any? { |idx| idx.columns == [name] }
         opts << "enum"           if enums.key?(name)
+        opts << "comment: #{col.comment.inspect}" if col.respond_to?(:comment) && col.comment && !col.comment.empty?
 
         # Emit either a multiline block or a single line.
         if default_block

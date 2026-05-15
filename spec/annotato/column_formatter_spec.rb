@@ -70,6 +70,20 @@ RSpec.describe Annotato::ColumnFormatter do
     expect(result.any? { |l| l.include?("apples") && l.include?("default(1.5)") }).to be true
   end
 
+  it "renders DB column comments when present" do
+    commented = double(
+      "Column", name: "fire", sql_type: "text", default: nil, null: false,
+      comment: "Well, I like the way it burns"
+    )
+    blank = double("Column", name: "x", sql_type: "integer", default: nil, null: false, comment: "")
+    allow(connection).to receive(:columns).with("users").and_return([commented, blank])
+
+    result = described_class.format(model, connection)
+
+    expect(result[0]).to include(%(comment: "Well, I like the way it burns"))
+    expect(result[1]).not_to include("comment:")
+  end
+
   it "aligns multiline default values with consistent indentation and comment prefix" do
     result = described_class.format(model, connection)
 
