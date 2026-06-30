@@ -8,19 +8,18 @@ module Annotato
   class EnumFormatter
     def self.format(conn, columns)
       # Collect columns backed by a native PG enum type.
-      # A native enum type is one that exists in pg_type with typtype = 'e'.
       enum_columns = columns.select { |col| pg_enum_type?(conn, col.sql_type) }
       return [] if enum_columns.empty?
 
-      enum_columns.map do |col|
+      enum_columns.flat_map do |col|
         labels = pg_enum_labels(conn, col.sql_type)
         lines = ["#  #{col.name} (#{col.sql_type}): ["]
-        lines += labels.map.with_index { |label, i|
+        labels.each_with_index do |label, i|
           comma = i == labels.size - 1 ? "" : ","
-          "#    #{label}#{comma}"
-        }
+          lines << "#    #{label}#{comma}"
+        end
         lines << "#  ]"
-        lines.join("\n")
+        lines
       end
     end
 
@@ -40,7 +39,7 @@ module Annotato
       conn.exec_query(
         "SELECT e.enumlabel FROM pg_enum e " \
         "JOIN pg_type t ON e.enumtypid = t.oid " \
-        "WHERE t.typname = $1 " \
+        "WHERE t.typname = $1 AND t.typtype = 'e' " \
         "ORDER BY e.enumsortorder",
         "SQL",
         [type_name]
