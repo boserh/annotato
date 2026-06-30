@@ -26,11 +26,12 @@ module Annotato
         type = col.sql_type
 
         # Build the left-hand side and calculate indent.
-        left  = "#  %-#{name_width}s :%-#{type_width}s" % [name, type]
-        # " default(" is 9 chars; +2 gives the extra gap.
+        # Strip trailing padding spaces immediately — output must never have trailing whitespace.
+        left = ("#  %-#{name_width}s :%-#{type_width}s" % [name, type]).rstrip
+        # indent_size aligns multiline default content under the opening "default(" token.
         indent_size = left.length + 1
         indent_str  = " " * indent_size
-        closing_indent_str  = " " * (indent_size - 2)
+        closing_indent_str = " " * (indent_size - 2)
 
         # Gather all options, pulling out default_lines if multiline.
         opts         = []
@@ -64,10 +65,9 @@ module Annotato
           opts_str = opts.join(", ")
           line = opts_str.empty? ? left : "#{left} #{opts_str}"
           if line.length > WrapHelper::MAX_LINE && !opts_str.empty?
-            cont_indent = " " * (left.length + 1)
-            [left, "# #{cont_indent}#{opts_str}"]
+            [left, "#    #{opts_str}"]
           else
-            [line.rstrip]
+            [line]
           end
         end
       end
