@@ -2,7 +2,7 @@
 
 module Annotato
   module WrapHelper
-    MAX_LINE = 100
+    MAX_LINE = 120
 
     # Produces one or more lines, each already prefixed with "#    "
     # First line: "#    where (..."

@@ -19,6 +19,7 @@ RSpec.describe Annotato::AnnotationBuilder do
 
   before do
     allow(model).to receive(:table_name).and_return(table_name)
+    allow(connection).to receive(:adapter_name).and_return("PostgreSQL")
     ActiveRecord::Base.connection = connection
   end
 
