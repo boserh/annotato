@@ -20,7 +20,7 @@ RSpec.describe Annotato::ColumnFormatter do
       }.to_json, null: false),
       double("Column", name: "tags", sql_type: "character varying[]", default: [].to_json, null: false),
       double("Column", name: "spans", sql_type: "jsonb", default: {}.to_json, null: false),
-      double("Column", name: "status", sql_type: "integer", default: "pending", null: false),
+      double("Column", name: "status", sql_type: "order_status", default: "pending", null: false),
       double("Column", name: "settings", sql_type: "jsonb", default: { theme: "dark" }.to_json, null: false),
       double("Column", name: "active", sql_type: "boolean", default: false, null: false),
       double("Column", name: "apples", sql_type: "float", default: 1.5, null: false)
@@ -28,19 +28,16 @@ RSpec.describe Annotato::ColumnFormatter do
   end
 
   let(:indexes) { [] }
-  let(:enums) do
-    {
-      "status" => { "pending" => "0", "active" => "1" },
-      "allowed" => { "yes" => "yes", "no" => "no" },
-    }
-  end
 
   before do
     allow(model).to receive(:table_name).and_return("users")
     allow(model).to receive(:primary_key).and_return("id")
-    allow(model).to receive(:defined_enums).and_return(enums)
     allow(connection).to receive(:columns).with("users").and_return(columns)
     allow(connection).to receive(:indexes).with("users").and_return(indexes)
+    # order_status is a native PG enum; all other types are not
+    allow(connection).to receive(:exec_query)
+      .with(/SELECT typname FROM pg_type/, "SQL")
+      .and_return([{ "typname" => "order_status" }])
   end
 
   it "formats and aligns multiline defaults correctly" do
@@ -59,7 +56,7 @@ RSpec.describe Annotato::ColumnFormatter do
     # Ensure "is an Array" is mentioned
     expect(result.any? { |l| l.include?("is an Array") }).to be true
 
-    # Ensure "enum" is noted for status
+    # Ensure "enum" is noted for the status column (backed by order_status PG enum type)
     expect(result.any? { |l| l.include?("status") && l.include?("enum") }).to be true
 
     # Ensure theme appears in settings

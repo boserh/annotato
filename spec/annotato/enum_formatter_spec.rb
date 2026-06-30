@@ -4,61 +4,97 @@ require "spec_helper"
 require "annotato/enum_formatter"
 
 RSpec.describe Annotato::EnumFormatter do
-  let(:model) { double("Model") }
+  let(:connection) { double("Connection") }
 
-  context "when model has no enums" do
-    before { allow(model).to receive(:defined_enums).and_return({}) }
+  def pg_type_result(exists)
+    exists ? [{ "typname" => "my_enum" }] : []
+  end
+
+  context "when no columns have a native PG enum type" do
+    let(:columns) do
+      [
+        double("Column", name: "id", sql_type: "bigint"),
+        double("Column", name: "status", sql_type: "integer")
+      ]
+    end
+
+    before do
+      allow(connection).to receive(:exec_query)
+        .with(/SELECT 1 FROM pg_type/, anything, anything)
+        .and_return([])
+    end
 
     it "returns empty array" do
-      expect(described_class.format(model)).to eq([])
+      expect(described_class.format(connection, columns)).to eq([])
     end
   end
 
-  context "when enums have string values equal to keys" do
-    let(:enums) do
-      {
-        "delivery_type" => {
-          "truck_delivery" => "truck_delivery",
-          "ship_delivery" => "ship_delivery"
-        }
-      }
+  context "when a column has a native PG enum type" do
+    let(:columns) do
+      [
+        double("Column", name: "id", sql_type: "bigint"),
+        double("Column", name: "category", sql_type: "access_link_category")
+      ]
     end
 
-    before { allow(model).to receive(:defined_enums).and_return(enums) }
+    before do
+      # bigint is not an enum
+      allow(connection).to receive(:exec_query)
+        .with(/SELECT 1 FROM pg_type/, anything, ["bigint"])
+        .and_return([])
 
-    it "formats enums without values" do
-      result = described_class.format(model)
-      expect(result).to include(<<~ENUM.strip)
-        #  delivery_type: {
-        #    truck_delivery,
-        #    ship_delivery
-        #  }
+      # access_link_category is a native enum
+      allow(connection).to receive(:exec_query)
+        .with(/SELECT 1 FROM pg_type/, anything, ["access_link_category"])
+        .and_return([{ "typname" => "access_link_category" }])
+
+      # labels query
+      allow(connection).to receive(:exec_query)
+        .with(/SELECT e.enumlabel/, anything, ["access_link_category"])
+        .and_return([
+          { "enumlabel" => "internal" },
+          { "enumlabel" => "external" },
+          { "enumlabel" => "partner" }
+        ])
+    end
+
+    it "formats the DB enum type definition" do
+      result = described_class.format(connection, columns)
+      expect(result.size).to eq(1)
+      expect(result.first).to eq(<<~ENUM.strip)
+        #  category (access_link_category): [
+        #    internal,
+        #    external,
+        #    partner
+        #  ]
       ENUM
     end
   end
 
-  context "when enums have different values" do
-    let(:enums) do
-      {
-        "status" => {
-          "draft" => "0",
-          "published" => "1",
-          "archived" => "2"
-        }
-      }
+  context "when a column uses an array of a native PG enum type (e.g. my_enum[])" do
+    let(:columns) do
+      [double("Column", name: "roles", sql_type: "user_role[]")]
     end
 
-    before { allow(model).to receive(:defined_enums).and_return(enums) }
+    before do
+      allow(connection).to receive(:exec_query)
+        .with(/SELECT 1 FROM pg_type/, anything, ["user_role"])
+        .and_return([{ "typname" => "user_role" }])
 
-    it "formats enums with values" do
-      result = described_class.format(model)
-      expect(result).to include(<<~ENUM.strip)
-        #  status: {
-        #    draft (0),
-        #    published (1),
-        #    archived (2)
-        #  }
-      ENUM
+      allow(connection).to receive(:exec_query)
+        .with(/SELECT e.enumlabel/, anything, ["user_role"])
+        .and_return([
+          { "enumlabel" => "admin" },
+          { "enumlabel" => "viewer" }
+        ])
+    end
+
+    it "strips the array suffix and formats the enum type" do
+      result = described_class.format(connection, columns)
+      expect(result.size).to eq(1)
+      expect(result.first).to include("roles (user_role[]): [")
+      expect(result.first).to include("#    admin,")
+      expect(result.first).to include("#    viewer")
     end
   end
 end
