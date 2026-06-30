@@ -68,14 +68,12 @@ RSpec.describe Annotato::ModelAnnotator do
       expect(File).to receive(:write).with(file_path, including(annotation))
       annotator.run
       expect(output.string).to include("✍️  Annotated User")
-      expect(output.string).to include("✅ Annotato completed")
     end
 
     it "skips models without table" do
       allow(User).to receive(:table_exists?).and_return(false)
       expect(File).not_to receive(:write)
       annotator.run
-      expect(output.string).to include("✅ Annotato completed")
     end
   end
 end

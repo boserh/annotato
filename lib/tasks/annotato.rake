@@ -19,5 +19,7 @@ namespace :annotato do
       # No MODEL passed → annotate all models
       annotator.run
     end
+
+    puts "✅ Annotato completed"
   end
 end

@@ -9,8 +9,10 @@ module Annotato
       table_name     = model.table_name
       primary_key    = model.primary_key
       unique_indexes = connection.indexes(table_name).select(&:unique)
-      enums          = model.defined_enums
       columns        = connection.columns(table_name)
+
+      # Collect native PG enum type names once up front (avoids N+1 queries).
+      pg_enum_types = pg_enum_type_names(connection)
 
       # Compute max widths for name and sql_type so that the table lines up.
       name_width = columns.map(&:name).map(&:length).max
@@ -20,8 +22,6 @@ module Annotato
         name = col.name
         type = col.sql_type
 
-        # require "pry" if name == "allowed_statuses"
-        # binding.pry if name == "allowed_statuses"
         # Build the left-hand side and calculate indent.
         left  = "#  %-#{name_width}s :%-#{type_width}s" % [name, type]
         # " default(" is 9 chars; +2 gives the extra gap.
@@ -41,7 +41,7 @@ module Annotato
         opts << "primary key"    if name == primary_key
         opts << "is an Array"    if type.end_with?("[]")
         opts << "unique"         if unique_indexes.any? { |idx| idx.columns == [name] }
-        opts << "enum"           if enums.key?(name)
+        opts << "enum"           if pg_enum_types.include?(type.delete_suffix("[]"))
         opts << "comment: #{col.comment.inspect}" if col.respond_to?(:comment) && col.comment && !col.comment.empty?
 
         # Emit either a multiline block or a single line.
@@ -65,9 +65,8 @@ module Annotato
       end
     end
 
-    # Returns nil (no default) or an Array of un-indented lines:
-    #   ["[", "\"A\",", "\"B\"", "]"]   or   ["{", "\"k\":v,", ... , "}"]
-    # If the value is empty array or hash, returns ["[]"] or ["{}"].
+    # Returns nil for non-JSON/empty values, or an Array of un-indented inner lines
+    # for multiline formatting: e.g. ["\"A\",", "\"B\""] for a JSON array.
     def self.build_default_block(value)
       return nil if value.nil? || !value.is_a?(String)
       s = value.strip
@@ -77,15 +76,15 @@ module Annotato
       return nil unless parsed.is_a?(Array) || parsed.is_a?(Hash)
 
       if parsed.is_a?(Array)
-        return if parsed.empty? # empty array → ["[]"]
+        return nil if parsed.empty?
 
-        # Only a JSON array of strings?
+        # JSON array of strings
         parsed.map.with_index do |e, i|
           comma = i == parsed.size - 1 ? "" : ","
           %Q{"#{e}"#{comma}}
         end
       else
-        return if parsed.empty? # empty hash → ["{}"]
+        return nil if parsed.empty?
 
         # JSON hash → key/value pairs
         parsed.map.with_index do |(k, v), i|
@@ -94,5 +93,16 @@ module Annotato
         end
       end
     end
+
+    # Fetches all native PostgreSQL enum type names in one query.
+    # Returns a Set for O(1) membership checks.
+    def self.pg_enum_type_names(connection)
+      rows = connection.exec_query(
+        "SELECT typname FROM pg_type WHERE typtype = 'e'",
+        "SQL"
+      )
+      rows.map { |r| r["typname"] }.to_set
+    end
+    private_class_method :pg_enum_type_names
   end
 end

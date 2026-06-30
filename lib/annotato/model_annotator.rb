@@ -19,7 +19,6 @@ module Annotato
         annotation = AnnotationBuilder.build(model)
         write_annotation(model, annotation)
       end
-      @output.puts "✅ Annotato completed"
     end
 
     private
@@ -46,7 +45,13 @@ module Annotato
         file = model_file(model)
         return unless file && File.exist?(file)
 
-        content = File.read(file).dup   # <--- duplicate string to avoid FrozenError
+        content = File.read(file).dup
+
+        # Verify the class definition exists before doing anything else.
+        unless content.match?(/class\s+\w+/)
+          @output.puts "⚠️  Skipped #{model.name} — class not found in file"
+          return
+        end
 
         # Extract the old Annotato annotation block if it exists
         old_annotation = content[/^# == Annotato Schema Info.*?(?=^class|\z)/m]
@@ -57,16 +62,10 @@ module Annotato
           return
         end
 
-        # Remove old Annotato blocks
+        # Remove old Annotato blocks and legacy annotate-gem blocks
         content.gsub!(/^# == Annotato Schema Info.*?(?=^class|\z)/m, "")
         content.gsub!(/^# == Schema Information.*?(?=^class|\z)/m, "")
         content.rstrip!
-
-        # Verify the class definition exists before appending annotation
-        unless content.match?(/class\s+\w+/)
-          @output.puts "⚠️  Skipped #{model.name} — class not found in file"
-          return
-        end
 
         # Append the new annotation at the end of the file
         content += "\n\n#{annotation}\n"

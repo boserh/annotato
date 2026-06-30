@@ -22,7 +22,7 @@ module Annotato
       lines << "Columns:"
       lines += ColumnFormatter.format(model, conn)
 
-      enums = EnumFormatter.format(model)
+      enums = EnumFormatter.format(conn, conn.columns(table_name))
       unless enums.empty?
         lines << ""
         lines << "Enums:"
