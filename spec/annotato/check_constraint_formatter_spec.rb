@@ -16,6 +16,6 @@ RSpec.describe Annotato::CheckConstraintFormatter do
     result = described_class.format(connection, "users")
 
     expect(result).to include("#  chk_positive_age\n#    (age > 0)")
-    expect(result).to include("#  chk_valid_status\n#    (((((status)::text = 'deleted'::text) AND\n#    (deleted_at IS NOT NULL)) OR (((status)::text <> 'deleted'::text) AND\n#    (deleted_at IS NULL) AND (active = true))))")
+    expect(result).to include("#  chk_valid_status\n#    (((((status)::text = 'deleted'::text) AND (deleted_at IS NOT NULL)) OR (((status)::text <> 'deleted'::text) AND\n#    (deleted_at IS NULL) AND (active = true))))")
   end
 end

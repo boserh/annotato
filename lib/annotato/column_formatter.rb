@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "wrap_helper"
 
 module Annotato
   class ColumnFormatter
+    extend WrapHelper
+
     # Main entry: returns an array of comment lines per column, flattened.
     def self.format(model, connection)
       table_name     = model.table_name
@@ -57,10 +60,15 @@ module Annotato
           lines << closing
           lines
         else
-          # single-line comment
-          line = left
-          line += " #{opts.join(', ')}" unless opts.empty?
-          [line.rstrip]
+          # single-line comment; wrap options onto continuation line if too long
+          opts_str = opts.join(", ")
+          line = opts_str.empty? ? left : "#{left} #{opts_str}"
+          if line.length > WrapHelper::MAX_LINE && !opts_str.empty?
+            cont_indent = " " * (left.length + 1)
+            [left, "# #{cont_indent}#{opts_str}"]
+          else
+            [line.rstrip]
+          end
         end
       end
     end

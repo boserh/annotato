@@ -102,6 +102,26 @@ RSpec.describe Annotato::ColumnFormatter do
 
     # Closing line should be correctly indented
     closing_line = multiline_lines.find { |line| line.include?("]),") }
-    expect(closing_line).to match(/^#{"#" + ' ' * (indent_start-1)}\]\),/)
+    expect(closing_line).to match(/^#{"#" + ' ' * (indent_start - 1)}\]\),/)
+  end
+
+  it "wraps options onto a continuation line when the column line exceeds MAX_LINE" do
+    # left = "#  " (3) + name (79) + " :" (2) + type (22) = 106 chars
+    # 106 + " not null, unique" (17) = 123 > MAX_LINE (120) → must wrap
+    long_name = "a_very_long_column_name_that_will_definitely_push_the_line_over_the_rubocop_limit"
+    long_type = "character varying(255)"
+    col = double("Column", name: long_name, sql_type: long_type, default: nil, null: false)
+    allow(col).to receive(:respond_to?).with(:comment).and_return(false)
+    allow(connection).to receive(:columns).with("users").and_return([col])
+    allow(connection).to receive(:indexes).with("users").and_return([
+      double(name: "idx", columns: [long_name], unique: true)
+    ])
+
+    result = described_class.format(model, connection)
+
+    expect(result.size).to eq(2)
+    expect(result[0]).not_to include("not null")
+    expect(result[0].length).to be <= Annotato::WrapHelper::MAX_LINE
+    expect(result[1]).to include("not null, unique")
   end
 end
