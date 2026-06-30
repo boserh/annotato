@@ -6,10 +6,6 @@ require "annotato/enum_formatter"
 RSpec.describe Annotato::EnumFormatter do
   let(:connection) { double("Connection") }
 
-  def pg_type_result(exists)
-    exists ? [{ "typname" => "my_enum" }] : []
-  end
-
   context "when no columns have a native PG enum type" do
     let(:columns) do
       [
@@ -38,17 +34,14 @@ RSpec.describe Annotato::EnumFormatter do
     end
 
     before do
-      # bigint is not an enum
       allow(connection).to receive(:exec_query)
         .with(/SELECT 1 FROM pg_type/, anything, ["bigint"])
         .and_return([])
 
-      # access_link_category is a native enum
       allow(connection).to receive(:exec_query)
         .with(/SELECT 1 FROM pg_type/, anything, ["access_link_category"])
         .and_return([{ "typname" => "access_link_category" }])
 
-      # labels query
       allow(connection).to receive(:exec_query)
         .with(/SELECT e.enumlabel/, anything, ["access_link_category"])
         .and_return([
@@ -58,16 +51,21 @@ RSpec.describe Annotato::EnumFormatter do
         ])
     end
 
-    it "formats the DB enum type definition" do
+    it "returns a flat array of comment lines" do
       result = described_class.format(connection, columns)
-      expect(result.size).to eq(1)
-      expect(result.first).to eq(<<~ENUM.strip)
-        #  category (access_link_category): [
-        #    internal,
-        #    external,
-        #    partner
-        #  ]
-      ENUM
+      expect(result).to eq([
+        "#  category (access_link_category): [",
+        "#    internal,",
+        "#    external,",
+        "#    partner",
+        "#  ]"
+      ])
+    end
+
+    it "includes all labels including the last one" do
+      result = described_class.format(connection, columns)
+      expect(result).to include("#    partner")
+      expect(result.last).to eq("#  ]")
     end
   end
 
@@ -91,10 +89,10 @@ RSpec.describe Annotato::EnumFormatter do
 
     it "strips the array suffix and formats the enum type" do
       result = described_class.format(connection, columns)
-      expect(result.size).to eq(1)
-      expect(result.first).to include("roles (user_role[]): [")
-      expect(result.first).to include("#    admin,")
-      expect(result.first).to include("#    viewer")
+      expect(result).to include("#  roles (user_role[]): [")
+      expect(result).to include("#    admin,")
+      expect(result).to include("#    viewer")
+      expect(result).to include("#  ]")
     end
   end
 end
