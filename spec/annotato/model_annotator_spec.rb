@@ -39,13 +39,13 @@ RSpec.describe Annotato::ModelAnnotator do
   end
 
   describe "#write_annotation" do
-    it "skips writing annotation and outputs info message when annotation unchanged" do
+    it "skips writing annotation silently when annotation unchanged" do
       file = "spec/annotato/tmp_user.rb"
       File.write(file, annotation + "\nclass User\nend\n")
       allow(annotator).to receive(:model_file).and_return(file)
 
       annotator.send(:write_annotation, model, annotation)
-      expect(output.string).to include("ℹ️  Skipped User — annotation unchanged")
+      expect(output.string).to eq("")
 
       File.delete(file)
     end
