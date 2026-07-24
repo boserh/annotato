@@ -5,7 +5,7 @@ module Annotato
     extend WrapHelper
 
     def self.format(conn, table_name)
-      conn.indexes(table_name).map do |idx|
+      conn.indexes(table_name).sort_by(&:name).map do |idx|
         cols_list = Array(idx.columns).join(',')
         unique_clause = idx.unique ? " unique" : ""
 
