@@ -24,7 +24,7 @@ module Annotato
                return []
              end
 
-      rows.map { |r| "#  #{r['name']}" }
+      rows.map { |r| "#  #{r['name']}" }.sort
     end
   end
 end

@@ -5,7 +5,7 @@ module Annotato
     extend WrapHelper
 
     def self.format(conn, table_name)
-      conn.check_constraints(table_name).map do |chk|
+      conn.check_constraints(table_name).sort_by(&:name).map do |chk|
         expr_clause = ""
         if chk.expression
           expr_clause = "\n" + wrap_sql(chk.expression, first_prefix: "#    (", cont_prefix: "#    ")
