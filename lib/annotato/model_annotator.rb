@@ -58,7 +58,6 @@ module Annotato
 
         # Skip writing if the annotation hasn't changed
         if old_annotation && old_annotation.strip == annotation.strip
-          @output.puts "ℹ️  Skipped #{model.name} — annotation unchanged"
           return
         end
 
