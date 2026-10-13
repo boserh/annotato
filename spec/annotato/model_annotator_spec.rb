@@ -5,11 +5,17 @@ require_relative "../../lib/annotato/model_annotator"
 require_relative "../../lib/annotato/annotation_builder"
 
 require "singleton"
+require "pathname"
+require "tmpdir"
 
 # Minimal mock of Rails.application for tests
 module Rails
   def self.application
     Application.instance
+  end
+
+  def self.root
+    Pathname.new(Dir.pwd)
   end
 
   class Application
@@ -75,16 +81,75 @@ RSpec.describe Annotato::ModelAnnotator do
       File.delete(file)
     end
 
-    context "when source_location is nil" do
-      before do
-        allow(model).to receive_message_chain(:instance_method, :source_location).and_return(nil)
-        allow(Object).to receive(:const_source_location).with(model.name).and_return(["/app/models/fallback.rb", 123])
-      end
+    it "removes a legacy block above a module-wrapped class without touching the code" do
+      file = "spec/annotato/tmp_user4.rb"
+      code = "module Admin\n  class User < ApplicationRecord\n    def name; end\n  end\nend\n"
+      File.write(file, "# frozen_string_literal: true\n\n# == Schema Information\n#\n# Table name: users\n#\n\n#{code}")
+      allow(annotator).to receive(:model_file).and_return(file)
 
-      it "falls back to const_source_location" do
-        result = annotator.send(:model_file, model)
-        expect(result).to eq("/app/models/fallback.rb")
-      end
+      annotator.send(:write_annotation, model, annotation)
+      new_content = File.read(file)
+      expect(new_content).to start_with("# frozen_string_literal: true\n")
+      expect(new_content).to include(code)
+      expect(new_content).not_to include("== Schema Information")
+      expect(new_content).to end_with("#{annotation.strip}\n")
+    ensure
+      File.delete(file)
+    end
+
+    it "replaces an annotato block above a module without touching the code" do
+      file = "spec/annotato/tmp_user5.rb"
+      code = "module Admin\n  class User\n  end\nend\n"
+      File.write(file, "# == Annotato Schema Info\n# Table: old_users\n#\n#{code}")
+      allow(annotator).to receive(:model_file).and_return(file)
+
+      annotator.send(:write_annotation, model, annotation)
+      new_content = File.read(file)
+      expect(new_content).to include(code)
+      expect(new_content).not_to include("old_users")
+      expect(new_content.scan("== Annotato Schema Info").size).to eq(1)
+    ensure
+      File.delete(file)
+    end
+
+    it "removes a legacy block even when the annotato block is unchanged" do
+      file = "spec/annotato/tmp_user6.rb"
+      File.write(file, "# == Schema Information\n# Table name: users\n\nclass User\nend\n\n#{annotation}")
+      allow(annotator).to receive(:model_file).and_return(file)
+
+      annotator.send(:write_annotation, model, annotation)
+      expect(File.read(file)).to eq("class User\nend\n\n#{annotation.strip}\n")
+    ensure
+      File.delete(file)
+    end
+  end
+
+  describe "#model_file" do
+    it "returns the source file when it is inside the application" do
+      path = File.join(Dir.pwd, "app/models/user.rb")
+      allow(Object).to receive(:const_source_location).with("User").and_return([path, 1])
+
+      expect(annotator.send(:model_file, model)).to eq(path)
+    end
+
+    it "ignores files outside the application (gems, engines)" do
+      path = File.join(Dir.tmpdir, "gems/activestorage/app/models/active_storage/blob.rb")
+      allow(Object).to receive(:const_source_location).with("User").and_return([path, 1])
+
+      expect(annotator.send(:model_file, model)).to be_nil
+    end
+
+    it "ignores files under vendor/" do
+      path = File.join(Dir.pwd, "vendor/bundle/gems/foo/app/models/user.rb")
+      allow(Object).to receive(:const_source_location).with("User").and_return([path, 1])
+
+      expect(annotator.send(:model_file, model)).to be_nil
+    end
+
+    it "returns nil for anonymous classes" do
+      anonymous = double("Model", name: nil)
+
+      expect(annotator.send(:model_file, anonymous)).to be_nil
     end
   end
 
@@ -100,6 +165,16 @@ RSpec.describe Annotato::ModelAnnotator do
 
       expect(Annotato::AnnotationBuilder).to have_received(:build).with(model)
       expect(annotator).to have_received(:write_annotation).with(model, annotation)
+    end
+
+    it "skips anonymous classes and HABTM join models" do
+      anonymous = double("Anonymous", name: nil, abstract_class?: false)
+      allow(anonymous).to receive(:base_class).and_return(anonymous)
+      habtm = double("HABTM", name: "User::HABTM_Roles", abstract_class?: false)
+      allow(habtm).to receive(:base_class).and_return(habtm)
+      allow(ActiveRecord::Base).to receive(:descendants).and_return([anonymous, habtm, model])
+
+      expect(annotator.send(:models)).to eq([model])
     end
 
     it "skips models without table" do

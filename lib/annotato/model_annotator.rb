@@ -6,6 +6,12 @@ require_relative "annotation_builder"
 
 module Annotato
   class ModelAnnotator
+    # A block is its header line plus every directly following comment line.
+    # Matching stops at the first non-comment line (blank lines right after the block are
+    # consumed too), so code after the block is never touched.
+    ANNOTATO_BLOCK = /^# == Annotato Schema Info\n(?:#.*(?:\n|\z))*\n*/
+    LEGACY_BLOCK   = /^# == Schema Information\n(?:#.*(?:\n|\z))*\n*/
+
     def initialize(output: $stdout)
       @output = output
     end
@@ -25,20 +31,27 @@ module Annotato
 
       def models
         Rails.application.eager_load!
-        # All AR models, but skip STI subclasses (only keep base classes)
+        # All AR models, but skip STI subclasses (only keep base classes),
+        # anonymous classes and generated HABTM join models.
         ActiveRecord::Base.descendants
           .reject(&:abstract_class?)
           .select { |m| m.base_class == m }
+          .reject { |m| m.name.nil? || m.name.demodulize.start_with?("HABTM_") }
       end
 
+      # Only files inside the application are ever written; models defined
+      # in gems or engines (e.g. ActiveStorage::Blob) are skipped.
       def model_file(model)
-        file = model.instance_method(:initialize).source_location&.first
+        return if model.name.nil?
 
-        if file.nil? || file.include?("/gems/")
-          Object.const_source_location(model.name)&.first
-        else
-          file
-        end
+        file = Object.const_source_location(model.name)&.first
+        file if file && app_file?(file)
+      end
+
+      def app_file?(file)
+        root = "#{File.expand_path(Rails.root.to_s)}/"
+        path = File.expand_path(file)
+        path.start_with?(root) && !path.start_with?("#{root}vendor/")
       end
 
       def write_annotation(model, annotation)
@@ -53,21 +66,19 @@ module Annotato
           return
         end
 
-        # Extract the old Annotato annotation block if it exists
-        old_annotation = content[/^# == Annotato Schema Info.*?(?=^class|\z)/m]
-
-        # Skip writing if the annotation hasn't changed
-        if old_annotation && old_annotation.strip == annotation.strip
+        # Skip writing if the annotation hasn't changed and there is no legacy block to clean up
+        old_annotation = content[ANNOTATO_BLOCK]
+        if old_annotation && old_annotation.strip == annotation.strip && !content.match?(LEGACY_BLOCK)
           return
         end
 
         # Remove old Annotato blocks and legacy annotate-gem blocks
-        content.gsub!(/^# == Annotato Schema Info.*?(?=^class|\z)/m, "")
-        content.gsub!(/^# == Schema Information.*?(?=^class|\z)/m, "")
+        content.gsub!(ANNOTATO_BLOCK, "")
+        content.gsub!(LEGACY_BLOCK, "")
         content.rstrip!
 
         # Append the new annotation at the end of the file
-        content += "\n\n#{annotation}\n"
+        content += "\n\n#{annotation.rstrip}\n"
         File.write(file, content)
 
         @output.puts "✍️  Annotated #{model.name}"

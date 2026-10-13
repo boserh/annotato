@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "annotato/model_annotator"
+require "pathname"
 
 # Minimal Rails mock
 module Rails
@@ -9,6 +10,10 @@ module Rails
     Class.new {
       def eager_load!; true; end
     }.new
+  end
+
+  def self.root
+    Pathname.new(Dir.pwd)
   end
 end
 
@@ -38,8 +43,7 @@ RSpec.describe Annotato::ModelAnnotator do
   let(:annotator) { described_class.new(output: output) }
   let(:output) { StringIO.new }
   let(:connection_double) { double("Connection") }
-  let(:mock_method) { double(source_location: [file_path, 1]) }
-  let(:file_path) { "/tmp/user.rb" }
+  let(:file_path) { File.join(Dir.pwd, "app/models/user.rb") }
   let(:file_content) { "class User\nend\n" }
   let(:annotation) { "# == Annotato Schema Info\n# Table: users\n# Columns:\n#  id :bigint not null, primary key" }
 
@@ -49,7 +53,6 @@ RSpec.describe Annotato::ModelAnnotator do
     allow(Rails.application).to receive(:eager_load!).and_return(true)
     allow(ActiveRecord::Base).to receive(:descendants).and_return([User])
 
-    allow(User).to receive(:instance_method).with(:initialize).and_return(mock_method)
     allow(Object).to receive(:const_source_location).with("User").and_return([file_path, 1])
 
     allow(File).to receive(:exist?).with(file_path).and_return(true)
