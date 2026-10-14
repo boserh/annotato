@@ -124,6 +124,79 @@ RSpec.describe Annotato::ModelAnnotator do
     end
   end
 
+  describe "check mode" do
+    let(:annotator) { described_class.new(output: output, check: true) }
+
+    it "reports an outdated annotation without writing the file" do
+      file = "spec/annotato/tmp_user7.rb"
+      File.write(file, "class User\nend\n")
+      allow(annotator).to receive(:model_file).and_return(file)
+
+      annotator.send(:write_annotation, model, annotation)
+
+      expect(File.read(file)).to eq("class User\nend\n")
+      expect(annotator.outdated).to eq(["User"])
+      expect(output.string).to include("Outdated annotation: User")
+    ensure
+      File.delete(file)
+    end
+
+    it "reports nothing when the annotation is current" do
+      file = "spec/annotato/tmp_user8.rb"
+      File.write(file, "class User\nend\n\n#{annotation}")
+      allow(annotator).to receive(:model_file).and_return(file)
+
+      annotator.send(:write_annotation, model, annotation)
+
+      expect(annotator.outdated).to be_empty
+    ensure
+      File.delete(file)
+    end
+  end
+
+  describe "#write_file" do
+    it "replaces the file atomically, keeps its permissions and leaves no temp file" do
+      Dir.mktmpdir do |dir|
+        file = File.join(dir, "user.rb")
+        File.write(file, "old")
+        File.chmod(0o640, file)
+
+        annotator.send(:write_file, file, "new")
+
+        expect(File.read(file)).to eq("new")
+        expect(File.stat(file).mode & 0o777).to eq(0o640)
+        expect(Dir.children(dir)).to eq(["user.rb"])
+      end
+    end
+
+    it "writes through symlinks to the real file" do
+      Dir.mktmpdir do |dir|
+        real = File.join(dir, "real.rb")
+        link = File.join(dir, "link.rb")
+        File.write(real, "old")
+        File.symlink(real, link)
+
+        annotator.send(:write_file, link, "new")
+
+        expect(File.symlink?(link)).to be true
+        expect(File.read(real)).to eq("new")
+      end
+    end
+  end
+
+  describe "#run_named" do
+    it "annotates known models and skips unknown names" do
+      stub_const("Account", Class.new(ActiveRecord::Base))
+      allow(annotator).to receive(:run)
+
+      annotator.run_named(%w[Account Nope String])
+
+      expect(annotator).to have_received(:run).once.with(Account)
+      expect(output.string).to include("Skipped Nope — not an ActiveRecord model")
+      expect(output.string).to include("Skipped String — not an ActiveRecord model")
+    end
+  end
+
   describe "#model_file" do
     it "returns the source file when it is inside the application" do
       path = File.join(Dir.pwd, "app/models/user.rb")

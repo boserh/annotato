@@ -12,8 +12,14 @@ module Annotato
     ANNOTATO_BLOCK = /^# == Annotato Schema Info\n(?:#.*(?:\n|\z))*\n*/
     LEGACY_BLOCK   = /^# == Schema Information\n(?:#.*(?:\n|\z))*\n*/
 
-    def initialize(output: $stdout)
-      @output = output
+    # Names of models whose annotation is missing or outdated (filled in check mode).
+    attr_reader :outdated
+
+    # check: true reports outdated annotations without writing any file.
+    def initialize(output: $stdout, check: false)
+      @output   = output
+      @check    = check
+      @outdated = []
     end
 
     def run(one_model = nil)
@@ -24,6 +30,20 @@ module Annotato
 
         annotation = AnnotationBuilder.build(model)
         write_annotation(model, annotation)
+      end
+    end
+
+    # Annotates models given by name (e.g. ["User", "Admin::Account"]).
+    # Unknown names are reported and skipped instead of aborting the whole run.
+    def run_named(names)
+      names.each do |name|
+        klass = name.safe_constantize
+        unless klass.is_a?(Class) && klass < ActiveRecord::Base
+          @output.puts "⚠️  Skipped #{name} — not an ActiveRecord model"
+          next
+        end
+
+        run(klass)
       end
     end
 
@@ -72,6 +92,12 @@ module Annotato
           return
         end
 
+        if @check
+          @outdated << model.name
+          @output.puts "❌ Outdated annotation: #{model.name}"
+          return
+        end
+
         # Remove old Annotato blocks and legacy annotate-gem blocks
         content.gsub!(ANNOTATO_BLOCK, "")
         content.gsub!(LEGACY_BLOCK, "")
@@ -79,9 +105,20 @@ module Annotato
 
         # Append the new annotation at the end of the file
         content += "\n\n#{annotation.rstrip}\n"
-        File.write(file, content)
+        write_file(file, content)
 
         @output.puts "✍️  Annotated #{model.name}"
+      end
+
+      # Writes via a temp file + rename so an interrupted run never leaves a truncated model file.
+      def write_file(file, content)
+        target = File.realpath(file)
+        tmp    = "#{target}.annotato-#{Process.pid}.tmp"
+        File.write(tmp, content)
+        File.chmod(File.stat(target).mode, tmp)
+        File.rename(tmp, target)
+      ensure
+        File.delete(tmp) if tmp && File.exist?(tmp)
       end
   end
 end

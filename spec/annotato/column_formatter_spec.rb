@@ -35,9 +35,10 @@ RSpec.describe Annotato::ColumnFormatter do
     allow(connection).to receive(:columns).with("users").and_return(columns)
     allow(connection).to receive(:indexes).with("users").and_return(indexes)
     # order_status is a native PG enum; all other types are not
+    allow(connection).to receive(:adapter_name).and_return("PostgreSQL")
     allow(connection).to receive(:exec_query)
-      .with(/SELECT typname FROM pg_type/, "SQL")
-      .and_return([{ "typname" => "order_status" }])
+      .with(/pg_enum/, "SQL")
+      .and_return([{ "type_name" => "order_status", "label" => "pending" }])
   end
 
   it "formats and aligns multiline defaults correctly" do
@@ -112,9 +113,10 @@ RSpec.describe Annotato::ColumnFormatter do
     long_type = "character varying(255)"
     col = double("Column", name: long_name, sql_type: long_type, default: nil, null: false)
     allow(col).to receive(:respond_to?).with(:comment).and_return(false)
+    allow(col).to receive(:respond_to?).with(:default_function).and_return(false)
     allow(connection).to receive(:columns).with("users").and_return([col])
     allow(connection).to receive(:indexes).with("users").and_return([
-      double(name: "idx", columns: [long_name], unique: true)
+      double(name: "idx", columns: [long_name], unique: true, where: nil)
     ])
 
     result = described_class.format(model, connection)
@@ -123,5 +125,49 @@ RSpec.describe Annotato::ColumnFormatter do
     expect(result[0]).not_to include("not null")
     expect(result[0].length).to be <= Annotato::WrapHelper::MAX_LINE
     expect(result[1]).to include("not null, unique")
+  end
+  it "shows database function defaults" do
+    col = double("Column", name: "created_at", sql_type: "timestamp(6) without time zone",
+                           default: nil, default_function: "now()", null: false)
+    allow(connection).to receive(:columns).with("users").and_return([col])
+
+    expect(described_class.format(model, connection, pg_enums: {}).first)
+      .to end_with(":timestamp(6) without time zone default(now()), not null")
+  end
+
+  it "does not mark a column unique when its unique index is partial" do
+    allow(connection).to receive(:indexes).with("users").and_return([
+      double(name: "idx_email_active", columns: ["email"], unique: true, where: "(deleted_at IS NULL)"),
+      double(name: "idx_code", columns: ["code"], unique: true, where: nil)
+    ])
+    allow(connection).to receive(:columns).with("users").and_return([
+      double("Column", name: "email", sql_type: "text", default: nil, null: true),
+      double("Column", name: "code", sql_type: "text", default: nil, null: true)
+    ])
+
+    email, code = described_class.format(model, connection, pg_enums: {})
+    expect(email).not_to include("unique")
+    expect(code).to include("unique")
+  end
+
+  it "returns an empty array for a table without columns" do
+    allow(connection).to receive(:columns).with("users").and_return([])
+
+    expect(described_class.format(model, connection, pg_enums: {})).to eq([])
+  end
+
+  it "renders JSON defaults as valid, pretty-printed JSON" do
+    col = double("Column", name: "data", sql_type: "jsonb", null: true,
+                           default: { ids: [1, 2], nested: { off: nil, quote: %(say "hi") } }.to_json)
+    allow(connection).to receive(:columns).with("users").and_return([col])
+
+    lines = described_class.format(model, connection, pg_enums: {})
+    body = lines.map { |l| l.sub(/\A#\s*/, "") }.join("\n")
+    json = body[/default\((.*)\)\z/m, 1]
+
+    expect(lines.first).to end_with("default({")
+    expect(lines.last).to match(/^#\s+}\)$/)
+    expect(JSON.parse(json)).to eq("ids" => [1, 2], "nested" => { "off" => nil, "quote" => %(say "hi") })
+    expect(lines).to include(a_string_matching(/^#\s+1,$/))
   end
 end

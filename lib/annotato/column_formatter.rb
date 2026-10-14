@@ -2,20 +2,20 @@
 
 require "json"
 require_relative "wrap_helper"
+require_relative "enum_formatter"
 
 module Annotato
   class ColumnFormatter
     extend WrapHelper
 
     # Main entry: returns an array of comment lines per column, flattened.
-    def self.format(model, connection)
+    def self.format(model, connection, pg_enums: EnumFormatter.pg_enums(connection))
       table_name     = model.table_name
       primary_key    = model.primary_key
-      unique_indexes = connection.indexes(table_name).select(&:unique)
+      # Partial unique indexes only enforce uniqueness for some rows, so they don't count.
+      unique_indexes = connection.indexes(table_name).select { |idx| idx.unique && idx.where.to_s.empty? }
       columns        = connection.columns(table_name)
-
-      # Collect native PG enum type names once up front (avoids N+1 queries).
-      pg_enum_types = pg_enum_type_names(connection)
+      return [] if columns.empty?
 
       # Compute max widths for name and sql_type so that the table lines up.
       name_width = columns.map(&:name).map(&:length).max
@@ -40,22 +40,24 @@ module Annotato
           opts << "__MULTILINE__"  # placeholder
         elsif !col.default.nil?
           opts << "default(#{col.default.inspect})"
+        elsif col.respond_to?(:default_function) && col.default_function
+          opts << "default(#{col.default_function})"
         end
         opts << "not null"       unless col.null
         opts << "primary key"    if name == primary_key
         opts << "is an Array"    if type.end_with?("[]")
         opts << "unique"         if unique_indexes.any? { |idx| idx.columns == [name] }
-        opts << "enum"           if pg_enum_types.include?(type.delete_suffix("[]"))
+        opts << "enum"           if pg_enums.key?(type.delete_suffix("[]"))
         opts << "comment: #{col.comment.inspect}" if col.respond_to?(:comment) && col.comment && !col.comment.empty?
 
         # Emit either a multiline block or a single line.
         if default_block
           # 1) opening line
-          lines = ["#{left} default(#{col.default[0]}"]
+          lines = ["#{left} default(#{default_block[:open]}"]
           # 2) each interior line, prefixed by "# " + indent_str
-          lines += default_block.map { |l| "# #{indent_str}#{l}" }
+          lines += default_block[:lines].map { |l| "# #{indent_str}#{l}" }
           # 3) closing line with trailing options
-          closing = "# #{closing_indent_str}#{col.default[-1]})"
+          closing = "# #{closing_indent_str}#{default_block[:close]})"
           trailing = opts.reject { |o| o == "__MULTILINE__" }
           closing += ", #{trailing.join(', ')}" unless trailing.empty?
           lines << closing
@@ -73,8 +75,9 @@ module Annotato
       end
     end
 
-    # Returns nil for non-JSON/empty values, or an Array of un-indented inner lines
-    # for multiline formatting: e.g. ["\"A\",", "\"B\""] for a JSON array.
+    # Returns nil for non-JSON/empty values, or { open:, close:, lines: } for multiline
+    # formatting, where lines are the un-indented inner lines of the pretty-printed JSON:
+    # e.g. { open: "[", close: "]", lines: ["\"A\",", "\"B\""] } for a JSON array.
     def self.build_default_block(value)
       return nil if value.nil? || !value.is_a?(String)
       s = value.strip
@@ -82,35 +85,14 @@ module Annotato
 
       parsed = JSON.parse(s) rescue nil
       return nil unless parsed.is_a?(Array) || parsed.is_a?(Hash)
+      return nil if parsed.empty?
 
-      if parsed.is_a?(Array)
-        return nil if parsed.empty?
-
-        # JSON array of strings
-        parsed.map.with_index do |e, i|
-          comma = i == parsed.size - 1 ? "" : ","
-          %Q{"#{e}"#{comma}}
-        end
-      else
-        return nil if parsed.empty?
-
-        # JSON hash → key/value pairs
-        parsed.map.with_index do |(k, v), i|
-          comma = i == parsed.size - 1 ? "" : ","
-          %Q{"#{k}": #{v.inspect}#{comma}}
-        end
-      end
+      pretty = JSON.pretty_generate(parsed).lines.map(&:rstrip)
+      {
+        open:  pretty.first,
+        close: pretty.last,
+        lines: pretty[1..-2].map { |l| l.delete_prefix("  ") }
+      }
     end
-
-    # Fetches all native PostgreSQL enum type names in one query.
-    # Returns a Set for O(1) membership checks.
-    def self.pg_enum_type_names(connection)
-      rows = connection.exec_query(
-        "SELECT typname FROM pg_type WHERE typtype = 'e'",
-        "SQL"
-      )
-      rows.map { |r| r["typname"] }.to_set
-    end
-    private_class_method :pg_enum_type_names
   end
 end

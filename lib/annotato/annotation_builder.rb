@@ -11,18 +11,31 @@ require_relative "check_constraint_formatter"
 module Annotato
   class AnnotationBuilder
     def self.build(model)
-      conn = ActiveRecord::Base.connection
+      with_connection(model) { |conn| build_with(model, conn) }
+    end
+
+    # Uses the model's own connection (multi-database apps), and with_connection on
+    # Rails 7.2+ where holding a permanent connection is deprecated.
+    def self.with_connection(model, &block)
+      model.respond_to?(:with_connection) ? model.with_connection(&block) : yield(model.connection)
+    end
+    private_class_method :with_connection
+
+    def self.build_with(model, conn)
       table_name = model.table_name
+      pg_enums = EnumFormatter.pg_enums(conn)
 
       lines = []
       lines << "== Annotato Schema Info"
       lines << "Table: #{table_name}"
+      comment = conn.respond_to?(:table_comment) && conn.table_comment(table_name)
+      lines << "Comment: #{comment}" if comment && !comment.empty?
       lines << ""
 
       lines << "Columns:"
-      lines += ColumnFormatter.format(model, conn)
+      lines += ColumnFormatter.format(model, conn, pg_enums: pg_enums)
 
-      enums = EnumFormatter.format(conn, conn.columns(table_name))
+      enums = EnumFormatter.format(conn, conn.columns(table_name), pg_enums: pg_enums)
       unless enums.empty?
         lines << ""
         lines << "Enums:"
@@ -52,5 +65,6 @@ module Annotato
 
       LineFormatter.format(lines)
     end
+    private_class_method :build_with
   end
 end

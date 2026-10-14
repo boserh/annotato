@@ -17,20 +17,6 @@ module Rails
   end
 end
 
-module ActiveRecord
-  class Base
-    def self.descendants; [User]; end
-
-    def self.connection
-      @connection_double
-    end
-
-    def self.connection=(conn)
-      @connection_double = conn
-    end
-  end
-end
-
 class User
   def self.table_exists?; true; end
   def self.name; "User"; end
@@ -42,14 +28,11 @@ end
 RSpec.describe Annotato::ModelAnnotator do
   let(:annotator) { described_class.new(output: output) }
   let(:output) { StringIO.new }
-  let(:connection_double) { double("Connection") }
   let(:file_path) { File.join(Dir.pwd, "app/models/user.rb") }
   let(:file_content) { "class User\nend\n" }
   let(:annotation) { "# == Annotato Schema Info\n# Table: users\n# Columns:\n#  id :bigint not null, primary key" }
 
   before do
-    ActiveRecord::Base.connection = connection_double
-
     allow(Rails.application).to receive(:eager_load!).and_return(true)
     allow(ActiveRecord::Base).to receive(:descendants).and_return([User])
 
@@ -57,25 +40,21 @@ RSpec.describe Annotato::ModelAnnotator do
 
     allow(File).to receive(:exist?).with(file_path).and_return(true)
     allow(File).to receive(:read).with(file_path).and_return(file_content)
-    allow(File).to receive(:write).with(file_path, any_args)
-
-    allow(connection_double).to receive(:indexes).and_return([])
-    allow(connection_double).to receive(:exec_query).and_return([])
-    allow(connection_double).to receive(:columns).and_return([])
+    allow(annotator).to receive(:write_file)
 
     allow(Annotato::AnnotationBuilder).to receive(:build).with(User).and_return(annotation)
   end
 
   describe "#run" do
     it "annotates models and writes annotation" do
-      expect(File).to receive(:write).with(file_path, including(annotation))
+      expect(annotator).to receive(:write_file).with(file_path, including(annotation))
       annotator.run
       expect(output.string).to include("✍️  Annotated User")
     end
 
     it "skips models without table" do
       allow(User).to receive(:table_exists?).and_return(false)
-      expect(File).not_to receive(:write)
+      expect(annotator).not_to receive(:write_file)
       annotator.run
     end
   end

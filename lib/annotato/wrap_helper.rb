@@ -3,6 +3,8 @@
 module Annotato
   module WrapHelper
     MAX_LINE = 120
+    # Preferred break points, best first; the token stays at the end of the line.
+    BREAK_TOKENS = [" AND ", " OR ", ", ", ") ", " "].freeze
 
     # Produces one or more lines, each already prefixed with "#    "
     # First line: "#    where (..."
@@ -29,30 +31,8 @@ module Annotato
           break
         end
 
-        # Prefer breaking on logical operators within the window
-        window = remaining[0, available]
-        cut =
-          window.rindex(" AND ") ||
-          window.rindex(" OR ")  ||
-          window.rindex(", ")    ||
-          window.rindex(") ")    ||
-          window.rindex(" ")     # last resort: whitespace
-
-        # If we found a breakpoint, include it in the line (so operators stay visible)
-        if cut
-          # If we’re cutting on AND/OR/comma, keep that token at the end of the line when possible
-          if window[cut, 5] == " AND " || window[cut, 4] == " OR "
-            cut += (window[cut, 5] == " AND " ? 5 : 4)
-          elsif window[cut, 2] == ", "
-            cut += 2
-          elsif window[cut, 2] == ") "
-            cut += 2
-          else
-            cut += 1
-          end
-        else
-          cut = available
-        end
+        # Prefer breaking on logical operators within the window; hard cut if none.
+        cut = find_break(remaining[0, available]) || available
 
         lines << "#{current_prefix}#{remaining[0, cut].rstrip}"
         remaining = remaining[cut..].to_s.lstrip
@@ -63,6 +43,26 @@ module Annotato
       lines[-1] = "#{lines[-1]})"
 
       lines.join("\n")
+    end
+
+    private
+
+    # Position right after the best break token in window, or nil.
+    # Never breaks at position 0 (would emit an empty line) or inside a quoted SQL literal.
+    def find_break(window)
+      BREAK_TOKENS.each do |token|
+        pos = window.rindex(token)
+        while pos && pos.positive?
+          return pos + token.length unless inside_quotes?(window, pos)
+
+          pos = window.rindex(token, pos - 1)
+        end
+      end
+      nil
+    end
+
+    def inside_quotes?(text, pos)
+      text[0, pos].count("'").odd?
     end
   end
 end

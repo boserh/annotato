@@ -34,18 +34,35 @@ RSpec.describe Annotato::TriggerFormatter do
       ["users"]
   end
 
-  context "MySQL2 adapter" do
+  context "PostGIS adapter" do
     include_examples "formats trigger names",
-      "Mysql2",
-      /EVENT_OBJECT_TABLE/,
+      "PostGIS",
+      "SELECT tgname AS name FROM pg_trigger WHERE tgrelid = $1::regclass AND NOT tgisinternal",
       ["users"]
   end
 
-  context "SQLite3 adapter" do
+  context "SQLite adapter (ADAPTER_NAME is \"SQLite\")" do
     include_examples "formats trigger names",
-      "SQLite3",
+      "SQLite",
       "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ?",
       ["users"]
+  end
+
+  %w[Mysql2 Trilogy].each do |adapter|
+    context "#{adapter} adapter" do
+      before do
+        allow(connection).to receive(:adapter_name).and_return(adapter)
+        allow(connection).to receive(:quote).with("users").and_return("'users'")
+      end
+
+      it "quotes the table name instead of binding it" do
+        expect(connection).to receive(:exec_query)
+          .with(/EVENT_OBJECT_TABLE = 'users'\z/, "SQL")
+          .and_return([{ "name" => "b_trigger" }, { "name" => "a_trigger" }])
+
+        expect(described_class.format(connection, "users")).to eq(["#  a_trigger", "#  b_trigger"])
+      end
+    end
   end
 
   context "unsupported adapter" do

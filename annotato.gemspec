@@ -22,7 +22,7 @@ Gem::Specification.new do |spec|
 
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
     `git ls-files -z`.split("\x0").reject do |f|
-      f.match(%r{^(test|spec|features)/}) || f.start_with?(".github")
+      f.match(%r{^(test|spec|features|gemfiles)/}) || f.start_with?(".github")
     end
   end
 
@@ -30,5 +30,6 @@ Gem::Specification.new do |spec|
   spec.executables   = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "rails", ">= 6.0"
+  spec.add_dependency "activerecord", ">= 6.1"
+  spec.add_dependency "railties", ">= 6.1"
 end
