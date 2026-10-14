@@ -10,14 +10,14 @@
 - Check constraints are skipped on adapters/Rails versions that don't support them
 - Models on a secondary database are annotated from their own connection
 - `rake "annotato:models[User,Post]"` annotates every listed model; unknown names are skipped with a warning
-- Partial unique indexes no longer mark a column as `unique`
+- Columns whose only unique index is partial are marked `unique (partial)` instead of `unique`
 - JSON defaults are rendered as valid JSON (numbers, nested values, `null`, escaped quotes)
 - Tables without columns no longer crash; SQL is never wrapped inside a quoted literal
 
 ### Added
 
 - `rake annotato:check` for CI: fails when annotations are missing or outdated
-- Database function defaults (`default(now())`), table comments, index method / order / `INCLUDE` / `NULLS NOT DISTINCT`
+- Database function defaults (`default(now())`), generated columns (`generated(...)`), table comments, index method / order / `INCLUDE` / `NULLS NOT DISTINCT`
 - `MODEL` environment variable for `annotato:models`
 - `ANNOTATO_SKIP=1` to disable automatic annotation after migrations
 

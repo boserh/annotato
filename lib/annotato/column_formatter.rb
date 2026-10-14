@@ -12,8 +12,7 @@ module Annotato
     def self.format(model, connection, pg_enums: EnumFormatter.pg_enums(connection))
       table_name     = model.table_name
       primary_key    = model.primary_key
-      # Partial unique indexes only enforce uniqueness for some rows, so they don't count.
-      unique_indexes = connection.indexes(table_name).select { |idx| idx.unique && idx.where.to_s.empty? }
+      unique_indexes = connection.indexes(table_name).select(&:unique)
       columns        = connection.columns(table_name)
       return [] if columns.empty?
 
@@ -40,13 +39,16 @@ module Annotato
           opts << "__MULTILINE__"  # placeholder
         elsif !col.default.nil?
           opts << "default(#{col.default.inspect})"
-        elsif col.respond_to?(:default_function) && col.default_function
+        elsif generated?(col)
+          opts << "generated(#{col.default_function})"
+        elsif show_default_function?(col)
           opts << "default(#{col.default_function})"
         end
         opts << "not null"       unless col.null
         opts << "primary key"    if name == primary_key
         opts << "is an Array"    if type.end_with?("[]")
-        opts << "unique"         if unique_indexes.any? { |idx| idx.columns == [name] }
+        unique_flag = unique_option(unique_indexes, name)
+        opts << unique_flag      if unique_flag
         opts << "enum"           if pg_enums.key?(type.delete_suffix("[]"))
         opts << "comment: #{col.comment.inspect}" if col.respond_to?(:comment) && col.comment && !col.comment.empty?
 
@@ -67,13 +69,41 @@ module Annotato
           opts_str = opts.join(", ")
           line = opts_str.empty? ? left : "#{left} #{opts_str}"
           if line.length > WrapHelper::MAX_LINE && !opts_str.empty?
-            [left, "#    #{opts_str}"]
+            # Align the continuation under the type column so it reads as part of this column;
+            # fall back to a short indent if that still doesn't fit.
+            aligned = "##{' ' * (left.index(':') - 1)}#{opts_str}"
+            [left, aligned.length <= WrapHelper::MAX_LINE ? aligned : "#    #{opts_str}"]
           else
             [line]
           end
         end
       end
     end
+
+    # "unique" for a full single-column unique index; "unique (partial)" when every such
+    # index has a WHERE clause (uniqueness holds only for some rows, see Indexes section).
+    def self.unique_option(unique_indexes, name)
+      indexes = unique_indexes.select { |idx| idx.columns == [name] }
+      return if indexes.empty?
+
+      indexes.any? { |idx| idx.where.to_s.empty? } ? "unique" : "unique (partial)"
+    end
+    private_class_method :unique_option
+
+    # Generated columns (GENERATED ALWAYS AS ... ): Rails stores the expression in default_function.
+    def self.generated?(col)
+      col.respond_to?(:virtual?) && col.virtual? && !col.default_function.nil?
+    end
+    private_class_method :generated?
+
+    # Function defaults like now() are shown; sequence defaults of serial columns
+    # (nextval('users_id_seq'::regclass)) are implied by the type and only add noise.
+    def self.show_default_function?(col)
+      return false unless col.respond_to?(:default_function) && col.default_function
+
+      !col.default_function.start_with?("nextval(")
+    end
+    private_class_method :show_default_function?
 
     # Returns nil for non-JSON/empty values, or { open:, close:, lines: } for multiline
     # formatting, where lines are the un-indented inner lines of the pretty-printed JSON:

@@ -113,6 +113,7 @@ RSpec.describe Annotato::ColumnFormatter do
     long_type = "character varying(255)"
     col = double("Column", name: long_name, sql_type: long_type, default: nil, null: false)
     allow(col).to receive(:respond_to?).with(:comment).and_return(false)
+    allow(col).to receive(:respond_to?).with(:virtual?).and_return(false)
     allow(col).to receive(:respond_to?).with(:default_function).and_return(false)
     allow(connection).to receive(:columns).with("users").and_return([col])
     allow(connection).to receive(:indexes).with("users").and_return([
@@ -135,7 +136,52 @@ RSpec.describe Annotato::ColumnFormatter do
       .to end_with(":timestamp(6) without time zone default(now()), not null")
   end
 
-  it "does not mark a column unique when its unique index is partial" do
+  it "hides sequence defaults of serial columns" do
+    col = double("Column", name: "id", sql_type: "integer", default: nil,
+                           default_function: "nextval('audit_chats_id_seq'::regclass)", null: false)
+    allow(connection).to receive(:columns).with("users").and_return([col])
+
+    expect(described_class.format(model, connection, pg_enums: {}))
+      .to eq(["#  id :integer not null, primary key"])
+  end
+
+  it "shows generated columns as generated, not as a default" do
+    expr = "COALESCE(NULLIF((trade_name)::text, ''::text), (legal_name)::text)"
+    col = double("Column", name: "official_name", sql_type: "character varying", default: nil,
+                           default_function: expr, virtual?: true, null: true)
+    allow(connection).to receive(:columns).with("users").and_return([col])
+
+    expect(described_class.format(model, connection, pg_enums: {}))
+      .to eq(["#  official_name :character varying generated(#{expr})"])
+  end
+
+  it "aligns a wrapped option line under the type column" do
+    expr = "COALESCE(NULLIF((trade_name)::text, ''::text), (legal_name)::text)"
+    columns = [
+      double("Column", name: "official_name", sql_type: "character varying", default: nil,
+                       default_function: expr, virtual?: true, null: true),
+      double("Column", name: "years_in_business_total", sql_type: "integer", default: nil, null: true)
+    ]
+    allow(connection).to receive(:columns).with("users").and_return(columns)
+
+    lines = described_class.format(model, connection, pg_enums: {})
+
+    expect(lines[0]).to eq("#  official_name           :character varying")
+    expect(lines[1]).to eq("#                          generated(#{expr})")
+    expect(lines[1].index("generated")).to eq(lines[0].index(":"))
+  end
+
+  it "falls back to a short indent when the aligned continuation would still be too long" do
+    col = double("Column", name: "n" * 60, sql_type: "character varying", default: nil,
+                           default_function: "x" * 60, virtual?: true, null: true)
+    allow(connection).to receive(:columns).with("users").and_return([col])
+
+    lines = described_class.format(model, connection, pg_enums: {})
+
+    expect(lines[1]).to eq("#    generated(#{'x' * 60})")
+  end
+
+  it "marks a column unique (partial) when its only unique index is partial" do
     allow(connection).to receive(:indexes).with("users").and_return([
       double(name: "idx_email_active", columns: ["email"], unique: true, where: "(deleted_at IS NULL)"),
       double(name: "idx_code", columns: ["code"], unique: true, where: nil)
@@ -146,8 +192,8 @@ RSpec.describe Annotato::ColumnFormatter do
     ])
 
     email, code = described_class.format(model, connection, pg_enums: {})
-    expect(email).not_to include("unique")
-    expect(code).to include("unique")
+    expect(email).to end_with(":text unique (partial)")
+    expect(code).to end_with(":text unique")
   end
 
   it "returns an empty array for a table without columns" do
