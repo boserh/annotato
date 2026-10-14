@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-14
+
 ### Fixed
 
 - Replacing a legacy `annotate` block above a `module`-wrapped class no longer deletes the rest of the file
