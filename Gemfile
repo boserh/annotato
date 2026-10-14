@@ -13,4 +13,5 @@ gem "rspec", "~> 3.0"
 group :development, :test do
   gem "simplecov", require: false
   gem "pry", require: false
+  gem "sqlite3", ">= 2.1"
 end

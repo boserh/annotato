@@ -4,56 +4,47 @@ require "spec_helper"
 require "annotato/enum_formatter"
 
 RSpec.describe Annotato::EnumFormatter do
-  let(:connection) { double("Connection") }
+  let(:connection) { double("Connection", adapter_name: "PostgreSQL") }
 
-  context "when no columns have a native PG enum type" do
-    let(:columns) do
-      [
-        double("Column", name: "id", sql_type: "bigint"),
-        double("Column", name: "status", sql_type: "integer")
-      ]
+  describe ".pg_enums" do
+    it "groups labels by type name with a single query" do
+      expect(connection).to receive(:exec_query).once
+        .with(/format_type\(t\.oid, NULL\).*ORDER BY t\.oid, e\.enumsortorder/, "SQL")
+        .and_return([
+          { "type_name" => "user_role", "label" => "admin" },
+          { "type_name" => "user_role", "label" => "viewer" },
+          { "type_name" => "billing.status", "label" => "paid" }
+        ])
+
+      expect(described_class.pg_enums(connection)).to eq(
+        "user_role" => %w[admin viewer],
+        "billing.status" => %w[paid]
+      )
     end
 
-    before do
-      allow(connection).to receive(:exec_query)
-        .with(/SELECT 1 FROM pg_type/, anything, anything)
-        .and_return([])
-    end
-
-    it "returns empty array" do
-      expect(described_class.format(connection, columns)).to eq([])
+    it "returns an empty hash without querying on other adapters" do
+      %w[Mysql2 Trilogy SQLite].each do |adapter|
+        conn = double("Connection", adapter_name: adapter)
+        expect(conn).not_to receive(:exec_query)
+        expect(described_class.pg_enums(conn)).to eq({})
+      end
     end
   end
 
-  context "when a column has a native PG enum type" do
-    let(:columns) do
-      [
-        double("Column", name: "id", sql_type: "bigint"),
-        double("Column", name: "category", sql_type: "access_link_category")
-      ]
-    end
+  describe ".format" do
+    let(:pg_enums) { { "access_link_category" => %w[internal external partner], "user_role" => %w[admin viewer] } }
 
-    before do
-      allow(connection).to receive(:exec_query)
-        .with(/SELECT 1 FROM pg_type/, anything, ["bigint"])
-        .and_return([])
+    it "returns empty array when no column uses a native PG enum" do
+      columns = [double("Column", name: "id", sql_type: "bigint"), double("Column", name: "status", sql_type: "integer")]
 
-      allow(connection).to receive(:exec_query)
-        .with(/SELECT 1 FROM pg_type/, anything, ["access_link_category"])
-        .and_return([{ "typname" => "access_link_category" }])
-
-      allow(connection).to receive(:exec_query)
-        .with(/SELECT e.enumlabel/, anything, ["access_link_category"])
-        .and_return([
-          { "enumlabel" => "internal" },
-          { "enumlabel" => "external" },
-          { "enumlabel" => "partner" }
-        ])
+      expect(described_class.format(connection, columns, pg_enums: pg_enums)).to eq([])
     end
 
     it "returns a flat array of comment lines" do
-      result = described_class.format(connection, columns)
-      expect(result).to eq([
+      columns = [double("Column", name: "id", sql_type: "bigint"),
+                 double("Column", name: "category", sql_type: "access_link_category")]
+
+      expect(described_class.format(connection, columns, pg_enums: pg_enums)).to eq([
         "#  category (access_link_category): [",
         "#    internal,",
         "#    external,",
@@ -62,37 +53,19 @@ RSpec.describe Annotato::EnumFormatter do
       ])
     end
 
-    it "includes all labels including the last one" do
-      result = described_class.format(connection, columns)
-      expect(result).to include("#    partner")
-      expect(result.last).to eq("#  ]")
-    end
-  end
+    it "strips the array suffix for enum array columns" do
+      columns = [double("Column", name: "roles", sql_type: "user_role[]")]
 
-  context "when a column uses an array of a native PG enum type (e.g. my_enum[])" do
-    let(:columns) do
-      [double("Column", name: "roles", sql_type: "user_role[]")]
+      expect(described_class.format(connection, columns, pg_enums: pg_enums)).to eq([
+        "#  roles (user_role[]): [", "#    admin,", "#    viewer", "#  ]"
+      ])
     end
 
-    before do
-      allow(connection).to receive(:exec_query)
-        .with(/SELECT 1 FROM pg_type/, anything, ["user_role"])
-        .and_return([{ "typname" => "user_role" }])
+    it "fetches enums from the connection when none are given" do
+      allow(connection).to receive(:exec_query).and_return([{ "type_name" => "user_role", "label" => "admin" }])
+      columns = [double("Column", name: "role", sql_type: "user_role")]
 
-      allow(connection).to receive(:exec_query)
-        .with(/SELECT e.enumlabel/, anything, ["user_role"])
-        .and_return([
-          { "enumlabel" => "admin" },
-          { "enumlabel" => "viewer" }
-        ])
-    end
-
-    it "strips the array suffix and formats the enum type" do
-      result = described_class.format(connection, columns)
-      expect(result).to include("#  roles (user_role[]): [")
-      expect(result).to include("#    admin,")
-      expect(result).to include("#    viewer")
-      expect(result).to include("#  ]")
+      expect(described_class.format(connection, columns)).to include("#    admin")
     end
   end
 end

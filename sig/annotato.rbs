@@ -1,4 +1,27 @@
 module Annotato
   VERSION: String
-  # See the writing guide of rbs: https://github.com/ruby/rbs#guides
+
+  class ModelAnnotator
+    attr_reader outdated: Array[String]
+
+    def initialize: (?output: IO, ?check: bool) -> void
+    def run: (?untyped one_model) -> void
+    def run_named: (Array[String] names) -> void
+  end
+
+  class AnnotationBuilder
+    def self.build: (untyped model) -> String
+  end
+
+  module AutoAnnotate
+    TASK_PATTERN: Regexp
+
+    def self.enabled?: (_ToS rails_env, ?Hash[String, String?] env) -> bool
+    def self.task_names: (Array[String] all_names) -> Array[String]
+  end
+
+  module Adapter
+    def self.kind: (untyped conn) -> (:postgresql | :mysql | :sqlite | nil)
+    def self.postgresql?: (untyped conn) -> bool
+  end
 end
